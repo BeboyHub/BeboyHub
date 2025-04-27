@@ -1,0 +1,110 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Window = Rayfield:CreateWindow({Name = "BeBoy Hub", LoadingTitle = "Loading...", LoadingSubtitle = "by TChay"})
+local Tab = Window:CreateTab("Main", 4483362458)
+
+-- เธเธฑเธเธเนเธเธฑเธเน€เธเธทเนเธญเธ—เธณเนเธซเนเน€เธเธดเธ” Loop
+local function startLoop(callback, delay)
+    local isRunning = true
+    task.spawn(function()
+        while isRunning do
+            callback()
+            task.wait(delay)
+        end
+    end)
+    return function() isRunning = false end
+end
+
+-- เธชเธฃเนเธฒเธ Toggle เธชเธณเธซเธฃเธฑเธ Aura, Dupe, เน€เธชเธเธเธดเนเธเนเธฃเน เนเธฅเธฐ Auto Rebirth
+local stopAura, stopDupeMoney, stopDupeCoin, stopRebirth
+
+Tab:CreateToggle({
+    Name = "Aura",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            stopAura = startLoop(function()
+                pcall(function()
+                    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Enemy"):WaitForChild("HurtEnemyEvent"):FireServer("2_2", 1, 1)
+                end)
+            end, 0.1)
+        else
+            stopAura() -- เธซเธขเธธเธ”เน€เธกเธทเนเธญเธเธดเธ” Toggle
+        end
+    end
+})
+
+Tab:CreateToggle({
+    Name = "Dupe เน€เธเธดเธ",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            stopDupeMoney = startLoop(function()
+                pcall(function()
+                    local args = { [1] = 2 }
+                    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Turntable"):WaitForChild("GetRewardByRandom"):FireServer(unpack(args))
+                end)
+            end, 0.1)
+        else
+            stopDupeMoney() -- เธซเธขเธธเธ”เน€เธกเธทเนเธญเธเธดเธ” Toggle
+        end
+    end
+})
+
+Tab:CreateToggle({
+    Name = "Dupe เน€เธซเธฃเธตเธขเธ",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            stopDupeCoin = startLoop(function()
+                pcall(function()
+                    local args = { [1] = 4 }
+                    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Turntable"):WaitForChild("GetRewardByRandom"):FireServer(unpack(args))
+                end)
+            end, 0.1)
+        else
+            stopDupeCoin() -- เธซเธขเธธเธ”เน€เธกเธทเนเธญเธเธดเธ” Toggle
+        end
+    end
+})
+
+Tab:CreateToggle({
+    Name = "เน€เธชเธเธเธดเนเธเนเธฃเน",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            stopRebirth = startLoop(function()
+                pcall(function()
+                    local args = { [1] = 1 }
+                    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Turntable"):WaitForChild("GetRewardByRandom"):FireServer(unpack(args))
+                end)
+            end, 0.1)
+        else
+            stopRebirth() -- เธซเธขเธธเธ”เน€เธกเธทเนเธญเธเธดเธ” Toggle
+        end
+    end
+})
+
+Tab:CreateToggle({
+    Name = "Auto Rebirth",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            stopRebirth = startLoop(function()
+                pcall(function()
+                    game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("Rebirth"):WaitForChild("RebirthEvent"):FireServer()
+                end)
+            end, 0.5)
+        else
+            stopRebirth() -- เธซเธขเธธเธ”เน€เธกเธทเนเธญเธเธดเธ” Toggle
+        end
+    end
+})
+
+-- เธชเธฃเนเธฒเธเนเธ—เนเธเธชเธณเธซเธฃเธฑเธ inf yield
+local MiscTab = Window:CreateTab("Misc", 4483362459)
+MiscTab:CreateButton({
+    Name = "inf yield",
+    Callback = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source', true))()
+    end
+})
