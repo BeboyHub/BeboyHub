@@ -1,0 +1,119 @@
+-- โหลด Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- สร้าง Window หลัก
+local Window = Rayfield:CreateWindow({
+    Name = "BeBoy Hub | Drill Digging Simulator",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by TChay"
+})
+
+-- สร้าง Tab Main สำหรับ Auto Money
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+-- สร้าง Tab Auto Egg สำหรับเปิดไข่
+local AutoEggTab = Window:CreateTab("Auto Egg", 4483362458)
+
+-- สร้าง Tab Misc สำหรับ Anti AFK
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+
+-------------------------------------------------
+-- 🌟 Main Tab - Auto Money
+-------------------------------------------------
+
+local autoMoneyRunning = false
+
+MainTab:CreateToggle({
+    Name = "Auto Money (ใช้ Tool ที่ถืออยู่)",
+    CurrentValue = false,
+    Callback = function(state)
+        autoMoneyRunning = state
+        if autoMoneyRunning then
+            task.spawn(function()
+                while autoMoneyRunning do
+                    pcall(function()
+                        local player = game:GetService("Players").LocalPlayer
+                        local char = player.Character
+                        if char then
+                            local tool = char:FindFirstChildOfClass("Tool")
+                            if tool then
+                                game:GetService("ReplicatedStorage"):WaitForChild("GiveCash"):FireServer(tool)
+                            end
+                        end
+                    end)
+                    task.wait(0.2)
+                end
+            end)
+        end
+    end
+})
+
+-------------------------------------------------
+-- 🌟 Auto Egg Tab - ฟักไข่
+-------------------------------------------------
+
+local selectedEgg = "Easter Egg"
+local autoEggRunning = false
+
+AutoEggTab:CreateInput({
+    Name = "ใส่ชื่อไข่ที่ต้องการฟัก",
+    PlaceholderText = "เช่น: Easter Egg",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        selectedEgg = text
+    end
+})
+
+AutoEggTab:CreateToggle({
+    Name = "Auto Hatch Egg",
+    CurrentValue = false,
+    Callback = function(state)
+        autoEggRunning = state
+        if autoEggRunning then
+            task.spawn(function()
+                while autoEggRunning do
+                    pcall(function()
+                        local args = {
+                            [1] = selectedEgg,
+                            [2] = 1
+                        }
+                        game:GetService("ReplicatedStorage"):WaitForChild("KPets"):WaitForChild("Events"):WaitForChild("Hatch"):FireServer(unpack(args))
+                    end)
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+-------------------------------------------------
+-- 🌟 Misc Tab - Anti AFK
+-------------------------------------------------
+
+MiscTab:CreateButton({
+    Name = "เปิด Anti AFK (กันหลุด)",
+    Callback = function()
+        local vu = game:GetService("VirtualUser")
+        local player = game:GetService("Players").LocalPlayer
+
+        player.Idled:Connect(function()
+            pcall(function()
+                vu:CaptureController()
+                vu:ClickButton2(Vector2.new(0,0))
+            end)
+        end)
+
+        Rayfield:Notify({
+            Title = "Anti AFK เปิดแล้ว!",
+            Content = "คุณจะไม่หลุดเกม",
+            Duration = 5,
+            Image = 4483362458,
+            Actions = {
+                Ignore = {
+                    Name = "โอเค",
+                    Callback = function() end
+                }
+            }
+        })
+    end
+})
