@@ -8,13 +8,10 @@ local Window = Rayfield:CreateWindow({
     LoadingSubtitle = "by TChay"
 })
 
--- สร้าง Tab Main สำหรับ Auto Money
+-- สร้าง Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
-
--- สร้าง Tab Auto Egg สำหรับเปิดไข่
 local AutoEggTab = Window:CreateTab("Auto Egg", 4483362458)
-
--- สร้าง Tab Misc สำหรับ Anti AFK
+local TeleportTab = Window:CreateTab("Teleport", 4483362458) -- 📍 เพิ่ม Tab Teleport
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 -------------------------------------------------
@@ -49,7 +46,7 @@ MainTab:CreateToggle({
 })
 
 -------------------------------------------------
--- 🌟 Auto Egg Tab - ฟักไข่
+-- 🌟 Auto Egg Tab - ฟักไข่อัตโนมัติ
 -------------------------------------------------
 
 local selectedEgg = "Easter Egg"
@@ -78,6 +75,34 @@ AutoEggTab:CreateToggle({
                             [2] = 1
                         }
                         game:GetService("ReplicatedStorage"):WaitForChild("KPets"):WaitForChild("Events"):WaitForChild("Hatch"):FireServer(unpack(args))
+                    end)
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+-------------------------------------------------
+-- 🌟 Teleport Tab - Auto Teleport
+-------------------------------------------------
+
+local teleportEnabled = false
+local targetPosition = Vector3.new(-69.05, 6918.20, -1.04) -- 📍 จุด Teleport
+
+TeleportTab:CreateToggle({
+    Name = "Auto Teleport ไปยังจุดฟาร์ม",
+    CurrentValue = false,
+    Callback = function(state)
+        teleportEnabled = state
+        if teleportEnabled then
+            task.spawn(function()
+                while teleportEnabled do
+                    pcall(function()
+                        local player = game.Players.LocalPlayer
+                        if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            player.Character.HumanoidRootPart.CFrame = CFrame.new(targetPosition)
+                        end
                     end)
                     task.wait(1)
                 end
