@@ -84,7 +84,7 @@ local CreditTab = Window:CreateTab("Credits", 4483362458)
 CreditTab:CreateParagraph({Title = "BeBoy Hub", Content = "Script made by TChay\nUI Powered by Rayfield Library."})
 
 ----------------------------------------------------------------
--- ส่วนเสริม: Misc Tab (Region Boost FPS และ Black Screen)
+-- ส่วนเสริม: Misc Tab (Boost FPS, Black Screen, Rejoin)
 ----------------------------------------------------------------
 
 -- ตัวแปรสำหรับ Black Screen
@@ -94,14 +94,14 @@ local blackScreenGui -- เก็บตัว Gui ไว้สำหรับป
 -- สร้าง Tab Misc
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
--- ปุ่ม Region Boost FPS
+-- ปุ่ม Boost FPS แบบปกติ
 MiscTab:CreateButton({
-    Name = "⚡ Region Boost FPS",
+    Name = "⚡ Boost FPS",
     Callback = function()
-        sethiddenproperty(game.Lighting, "Technology", Enum.Technology.Compatibility)
         game.Lighting.GlobalShadows = false
-        game.Lighting.FogEnd = 9e9
-        settings().Rendering.QualityLevel = "Level01"
+        game.Lighting.FogEnd = 100000
+        game.Lighting.Brightness = 2
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
 
         for i, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") then
@@ -110,7 +110,7 @@ MiscTab:CreateButton({
             elseif v:IsA("Decal") then
                 v.Transparency = 1
             elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-                v:Destroy()
+                v.Enabled = false
             end
         end
     end,
@@ -147,5 +147,15 @@ MiscTab:CreateButton({
             blackScreenGui:Destroy()
             isBlackScreenEnabled = false
         end
+    end,
+})
+
+-- ปุ่ม Rejoin Server
+MiscTab:CreateButton({
+    Name = "🔁 Rejoin Server",
+    Callback = function()
+        local TeleportService = game:GetService("TeleportService")
+        local Players = game:GetService("Players")
+        TeleportService:Teleport(game.PlaceId, Players.LocalPlayer)
     end,
 })
