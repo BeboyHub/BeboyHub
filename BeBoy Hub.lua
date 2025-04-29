@@ -12,13 +12,14 @@ local Window = Rayfield:CreateWindow({
     }
 })
 
+-- Tab หลัก
 local Tab = Window:CreateTab("Main", 4483362458)
 
 -- ตัวแปรหลัก
 _G.AutoDupe = false
 _G.DupeDelay = 0.1
 
--- ปุ่ม Dupe 1 ครั้ง
+-- ปุ่ม Dupe Gems 1 ครั้ง
 Tab:CreateButton({
     Name = "💎 Dupe Gems (Single Shot)",
     Callback = function()
@@ -65,7 +66,7 @@ Tab:CreateToggle({
     end,
 })
 
--- Slider ปรับความเร็วยิง
+-- Slider ปรับความเร็ว
 Tab:CreateSlider({
     Name = "⏱️ Set Dupe Speed (Delay Seconds)",
     Range = {0.01, 1},
@@ -77,9 +78,12 @@ Tab:CreateSlider({
     end,
 })
 
--- Credit
+-- Tab Credit
 local CreditTab = Window:CreateTab("Credits", 4483362458)
-CreditTab:CreateParagraph({Title = "BeBoy Hub", Content = "Script made by TChay\nUI Powered by Rayfield Library."})
+CreditTab:CreateParagraph({
+    Title = "BeBoy Hub",
+    Content = "Script made by TChay\nUI Powered by Rayfield Library."
+})
 
 -- Tab Misc
 local MiscTab = Window:CreateTab("Misc", 4483362458)
@@ -97,7 +101,7 @@ MiscTab:CreateButton({
         game.Lighting.FogEnd = 9e9
         settings().Rendering.QualityLevel = "Level01"
 
-        for i, v in pairs(workspace:GetDescendants()) do
+        for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") then
                 v.Material = Enum.Material.SmoothPlastic
                 v.Reflectance = 0
@@ -144,17 +148,14 @@ MiscTab:CreateButton({
     end,
 })
 
--- ปุ่ม Server Hop
+-- ปุ่ม Server Hop ไปหา JobId เฉพาะ
 MiscTab:CreateButton({
-    Name = "🔁 Server Hop",
+    Name = "🔁 Server Hop to Specific JobId",
     Callback = function()
         local TeleportService = game:GetService("TeleportService")
         local placeId = game.PlaceId
-        
-        -- ในกรณีนี้เราจะใช้การ Teleport ไปยังเซิร์ฟเวอร์ใหม่ (ต้องทราบ PlaceId และ JobId ของเซิร์ฟเวอร์ใหม่)
-        local targetJobId = "0aadce2a-0552-40d5-8a9e-122a28f77563" -- ต้องใช้ข้อมูล JobId ที่ทราบ
+        local targetJobId = "fa706d8e-73a4-4286-bbb5-87a236abf0ce" -- << JobId ตามที่คุณให้มา
 
-        -- Teleport ไปยังเซิร์ฟเวอร์ใหม่
-        TeleportService:TeleportToPlaceInstance(placeId, targetJobId)
+        TeleportService:TeleportToPlaceInstance(placeId, targetJobId, game.Players.LocalPlayer)
     end,
 })
