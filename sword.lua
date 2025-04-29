@@ -23,6 +23,7 @@ local OtherTab = Window:CreateTab("🎁 ฟีเจอร์อื่น ๆ", 
 local autoWinWorld1 = false
 local autoWinWorld2 = false
 local autoWinWorld3 = false
+local autoWinWorld4 = false
 local autoClaim = false
 
 -- Auto Win โลก 1
@@ -79,6 +80,27 @@ AutoTab:CreateToggle({
                     local args = {
                         [1] = 1,
                         [2] = Vector3.new(296.89556884765625, 5.290654182434082, -478.93963623046875)
+                    }
+                    game:GetService("ReplicatedStorage"):WaitForChild("Communication"):WaitForChild("EnemyDied"):FireServer(unpack(args))
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+-- ✅ Auto Win โลก 4 (ที่เพิ่มเข้ามา)
+AutoTab:CreateToggle({
+    Name = "โลก 4 - Auto Win",
+    CurrentValue = false,
+    Callback = function(Value)
+        autoWinWorld4 = Value
+        if autoWinWorld4 then
+            task.spawn(function()
+                while autoWinWorld4 do
+                    local args = {
+                        [1] = 1,
+                        [2] = Vector3.new(131.76898193359375, 5.24628210067749, -511.0265197753906)
                     }
                     game:GetService("ReplicatedStorage"):WaitForChild("Communication"):WaitForChild("EnemyDied"):FireServer(unpack(args))
                     task.wait(0.1)
