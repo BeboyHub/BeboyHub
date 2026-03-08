@@ -1,0 +1,77 @@
+-- โหลด Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "BeBoy Hub",
+   LoadingTitle = "BeBoy Hub",
+   LoadingSubtitle = "by TChay"
+})
+
+local Tab = Window:CreateTab("Main", 4483362458)
+
+-- ตัวแปร
+local SelectedPotion = "Damage"
+local AutoSummon = false
+
+-- เลือก Potion
+Tab:CreateDropdown({
+   Name = "Select Potion",
+   Options = {"Damage", "EXP", "Lucky", "Gold"},
+   CurrentOption = {"Damage"},
+   Callback = function(Value)
+      SelectedPotion = Value[1]
+   end
+})
+
+-- ใช้ Potion
+Tab:CreateButton({
+   Name = "Use Selected Potion (1x)",
+   Callback = function()
+
+        local args
+
+        if SelectedPotion == "Damage" then
+            args = {buffer.fromstring("*\000\000\t\000Resources\014\000Damage Potions\001")}
+
+        elseif SelectedPotion == "EXP" then
+            args = {buffer.fromstring("*\000\000\t\000Resources\018\000Experience Potions\001")}
+
+        elseif SelectedPotion == "Lucky" then
+            args = {buffer.fromstring("*\000\000\t\000Resources\r\000Lucky Potions\001")}
+
+        elseif SelectedPotion == "Gold" then
+            args = {buffer.fromstring("*\000\000\t\000Resources\r\000Golds Potions\001")}
+        end
+
+        game:GetService("ReplicatedStorage")
+        :WaitForChild("ByteNetReliable")
+        :FireServer(unpack(args))
+
+   end
+})
+
+-- Auto Summon Avatar
+Tab:CreateToggle({
+   Name = "Auto Summon Avatar",
+   CurrentValue = false,
+   Callback = function(Value)
+      AutoSummon = Value
+
+      if AutoSummon then
+         task.spawn(function()
+            while AutoSummon do
+
+               local args = {
+                  buffer.fromstring("\014\002\00010")
+               }
+
+               game:GetService("ReplicatedStorage")
+               :WaitForChild("ByteNetReliable")
+               :FireServer(unpack(args))
+
+               task.wait(0.3)
+            end
+         end)
+      end
+   end
+})
