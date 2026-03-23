@@ -155,9 +155,9 @@ local Keybind = MiscTab:Keybind({
     end
 })
 
--- ==================== Single Optimized Loop ====================
+-- ==================== Single Optimized Loop with Improved Wall Check ====================
 RS.RenderStepped:Connect(function()
-    -- Update FOV
+    -- Update FOV Circle
     FOVCircle.Visible = FOV_Visible
     FOVCircle.Radius = FOV_Radius
     FOVCircle.Position = UserInputService:GetMouseLocation()
@@ -166,23 +166,46 @@ RS.RenderStepped:Connect(function()
     local target = nil
     local shortestDist = FOV_Radius
 
+    -- เตรียม Parameters สำหรับเช็คกำแพง (ทำครั้งเดียวต่อเฟรมเพื่อประหยัด CPU)
+    local castParams = RaycastParams.new()
+    castParams.FilterType = Enum.RaycastFilterType.Exclude
+
     for plr, draw in pairs(cacheESP) do
         local char = plr.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
+        local head = char and char:FindFirstChild("Head")
         local hum = char and char:FindFirstChild("Humanoid")
+        local aimPosPart = char and char:FindFirstChild(AimPart)
 
         if ESP_Enabled and isEnemy(plr) and char and root and hum and hum.Health > 0 then
             local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            
             if onScreen then
                 local size = (2000 / pos.Z)
                 
-                -- Optimized Aimlock Scan (ทำในลูปเดียวกับ ESP เพื่อประหยัดทรัพยากร)
-                if AimlockEnabled then
+                -- ==================== Improved Aimlock Logic ====================
+                if AimlockEnabled and aimPosPart then
                     local mousePos = UserInputService:GetMouseLocation()
                     local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                    
                     if dist < shortestDist then
-                        shortestDist = dist
-                        target = plr
+                        -- เช็คกำแพง: ข้ามตัวเรา, ตัวเป้าหมาย และกล้อง
+                        castParams.FilterDescendantsInstances = {lp.Character, char, Camera}
+                        
+                        -- ฟังก์ชันเช็คว่าจุดเป้าหมายมองเห็นจริงไหม
+                        local function checkVisible(part)
+                            if not part then return false end
+                            local origin = Camera.CFrame.Position
+                            local direction = (part.Position - origin)
+                            local result = workspace:Raycast(origin, direction, castParams)
+                            return result == nil -- ถ้า nil คือไม่มีอะไรบัง
+                        end
+
+                        -- ล็อคทันทีถ้า "หัว" หรือ "ตัว" ส่วนใดส่วนหนึ่งโผล่พ้นกำแพง
+                        if checkVisible(head) or checkVisible(root) then
+                            shortestDist = dist
+                            target = plr
+                        end
                     end
                 end
 
@@ -200,15 +223,14 @@ RS.RenderStepped:Connect(function()
                     draw.name.Position = Vector2.new(pos.X, pos.Y - (size * 0.75) - 18)
                 else draw.name.Visible = false end
             else
-                draw.box.Visible = false
-                draw.name.Visible = false
+                draw.box.Visible, draw.name.Visible = false, false
             end
         else
-            draw.box.Visible = false
-            draw.name.Visible = false
+            draw.box.Visible, draw.name.Visible = false, false
         end
     end
 
+    -- หันหน้าจอไปหาเป้าหมาย (Aimlock Execute)
     if target and target.Character and target.Character:FindFirstChild(AimPart) then
         Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Character[AimPart].Position)
     end
