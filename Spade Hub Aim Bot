@@ -106,7 +106,19 @@ local Window = WindUI:CreateWindow({
     Size = UDim2.fromOffset(520, 500),
 })
 
-Window:EditOpenButton({ Title = "Open Spade Hub", Icon = "monitor", Draggable = true })
+Window:EditOpenButton({
+    Title = "Open Spade Hub", 
+    Icon = "monitor",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new( 
+        Color3.fromHex("FF0F7B"), 
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
 
 local AimTab = Window:Tab({ Title = "Combat", Icon = "crosshair" })
 local EspTab = Window:Tab({ Title = "Visuals", Icon = "eye" })
