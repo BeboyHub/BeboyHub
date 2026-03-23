@@ -70,27 +70,118 @@ local function applyHitbox(plr)
     end)
 end
 
--- ==================== Optimized ESP System ====================
+-- ==================== Optimized ESP & Skeleton System ====================
 local cacheESP = {}
+
+local function createDrawing(type, properties)
+    local obj = Drawing.new(type)
+    for i, v in pairs(properties) do obj[i] = v end
+    return obj
+end
 
 local function createESP(plr)
     if plr == lp then return end
     local draw = {
-        box = Drawing.new("Square"),
-        name = Drawing.new("Text")
+        box = createDrawing("Square", {Thickness = 2, Color = Color3.fromRGB(139, 92, 246), Transparency = 1, Filled = false, ZIndex = 2000}),
+        boxOutline = createDrawing("Square", {Thickness = 4, Color = Color3.fromRGB(0, 0, 0), Transparency = 0.5, Filled = false, ZIndex = 1999}),
+        name = createDrawing("Text", {Size = 14, Outline = true, Center = true, ZIndex = 2001, Color = Color3.fromRGB(255, 255, 255)}),
+        line = createDrawing("Line", {Thickness = 1.5, Color = Color3.fromRGB(139, 92, 246), Transparency = 0.6, ZIndex = 1998}),
+        -- Skeleton parts
+        skeleton = {
+            headToTorso = createDrawing("Line", {Thickness = 2, Color = Color3.fromRGB(255, 255, 255)}),
+            humToLarm = createDrawing("Line", {Thickness = 2, Color = Color3.fromRGB(255, 255, 255)}),
+            humToRarm = createDrawing("Line", {Thickness = 2, Color = Color3.fromRGB(255, 255, 255)}),
+            humToLleg = createDrawing("Line", {Thickness = 2, Color = Color3.fromRGB(255, 255, 255)}),
+            humToRleg = createDrawing("Line", {Thickness = 2, Color = Color3.fromRGB(255, 255, 255)})
+        }
     }
-    draw.box.Thickness, draw.box.ZIndex, draw.box.Transparency = 1, 2000, 0.7
-    draw.name.Size, draw.name.Outline, draw.name.ZIndex, draw.name.Center = 13, true, 2001, true
     cacheESP[plr] = draw
 end
 
-local function removeESP(plr)
-    if cacheESP[plr] then
-        cacheESP[plr].box:Remove()
-        cacheESP[plr].name:Remove()
-        cacheESP[plr] = nil
+-- ฟังก์ชันช่วยวาดกระดูก
+local function updateSkeleton(draw, char)
+    local parts = {
+        head = char:FindFirstChild("Head"),
+        torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"),
+        lArm = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm"),
+        rArm = char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm"),
+        lLeg = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg"),
+        rLeg = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")
+    }
+
+    local function setLine(line, p1, p2)
+        local pos1, on1 = Camera:WorldToViewportPoint(p1.Position)
+        local pos2, on2 = Camera:WorldToViewportPoint(p2.Position)
+        if on1 and on2 then
+            line.Visible = true
+            line.From = Vector2.new(pos1.X, pos1.Y)
+            line.To = Vector2.new(pos2.X, pos2.Y)
+        else line.Visible = false end
+    end
+
+    if parts.head and parts.torso then
+        setLine(draw.headToTorso, parts.head, parts.torso)
+        if parts.lArm then setLine(draw.humToLarm, parts.torso, parts.lArm) end
+        if parts.rArm then setLine(draw.humToRarm, parts.torso, parts.rArm) end
+        if parts.lLeg then setLine(draw.humToLleg, parts.torso, parts.lLeg) end
+        if parts.rLeg then setLine(draw.humToRleg, parts.torso, parts.rLeg) end
+    else
+        for _, l in pairs(draw) do l.Visible = false end
     end
 end
+
+-- ==================== Main Loop (Updated for Lines & Skeleton) ====================
+RS.RenderStepped:Connect(function()
+    -- (ส่วนอัปเดต FOV เหมือนเดิม...)
+    
+    for plr, draw in pairs(cacheESP) do
+        local char = plr.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+
+        if ESP_Enabled and isEnemy(plr) and char and root and hum and hum.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            
+            if onScreen then
+                local size = (2000 / pos.Z)
+                
+                -- 1. Box with Thick Outline
+                if ESP_Boxes then
+                    draw.box.Visible = true
+                    draw.boxOutline.Visible = true
+                    draw.box.Size = Vector2.new(size, size * 2.5)
+                    draw.box.Position = Vector2.new(pos.X - (size / 2), pos.Y - (size * 0.75))
+                    draw.boxOutline.Size = draw.box.Size
+                    draw.boxOutline.Position = draw.box.Position
+                else draw.box.Visible, draw.boxOutline.Visible = false, false end
+
+                -- 2. Tracers (เส้นโยงจากล่างจอ)
+                draw.line.Visible = true
+                draw.line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                draw.line.To = Vector2.new(pos.X, pos.Y + (size * 0.75))
+
+                -- 3. Names
+                if ESP_Names then
+                    draw.name.Visible = true
+                    draw.name.Text = string.format("%s [%d]", plr.Name, math.floor(hum.Health))
+                    draw.name.Position = Vector2.new(pos.X, pos.Y - (size * 0.75) - 18)
+                else draw.name.Visible = false end
+
+                -- 4. Skeleton (กระดูก)
+                updateSkeleton(draw.skeleton, char)
+            else
+                -- ปิดการมองเห็นถ้าไม่อยู่บนหน้าจอ
+                draw.box.Visible, draw.boxOutline.Visible, draw.name.Visible, draw.line.Visible = false, false, false, false
+                for _, l in pairs(draw.skeleton) do l.Visible = false end
+            end
+        else
+            draw.box.Visible, draw.boxOutline.Visible, draw.name.Visible, draw.line.Visible = false, false, false, false
+            for _, l in pairs(draw.skeleton) do l.Visible = false end
+        end
+    end
+    
+    
+end)
 
 -- ==================== FOV Circle ====================
 local FOVCircle = Drawing.new("Circle")
