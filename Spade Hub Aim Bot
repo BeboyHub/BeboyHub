@@ -143,6 +143,18 @@ EspTab:Toggle({ Title = "Enable ESP", Value = false, Callback = function(v) ESP_
 EspTab:Toggle({ Title = "Show Boxes", Value = false, Callback = function(v) ESP_Boxes = v end })
 EspTab:Toggle({ Title = "Show Names", Value = false, Callback = function(v) ESP_Names = v end })
 
+
+MiscTab:Section({ Title = "UI Settings" })
+
+local Keybind = MiscTab:Keybind({
+    Title = "Toggle UI Key",
+    Desc = "",
+    Value = "LeftControl", -- หรือ "G" ตามที่คุณต้องการ
+    Callback = function(v)
+        Window:SetToggleKey(Enum.KeyCode[v])
+    end
+})
+
 -- ==================== Single Optimized Loop ====================
 RS.RenderStepped:Connect(function()
     -- Update FOV
