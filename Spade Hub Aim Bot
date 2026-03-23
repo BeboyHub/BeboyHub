@@ -4,28 +4,27 @@ WindUI:SetNotificationLower(true)
 -- ==================== Theme Configuration ====================
 WindUI:AddTheme({
     Name = "AxelDark",
-    Accent                         = Color3.fromHex("#1a0a2e"),
-    Background                     = Color3.fromHex("#0b0b14"),
-    BackgroundTransparency         = 0,
-    Outline                        = Color3.fromHex("#5b21b6"),
-    Text                           = Color3.fromHex("#ede9fe"),
-    Placeholder                    = Color3.fromHex("#6d28d9"),
-    Button                         = Color3.fromHex("#1e1b4b"),
-    Icon                           = Color3.fromHex("#8b5cf6"),
-    Hover                          = Color3.fromHex("#ede9fe"),
-    WindowBackground               = Color3.fromHex("#0b0b14"),
-    WindowShadow                   = Color3.fromHex("#000000"),
-    WindowTopbarButtonIcon         = Color3.fromHex("#8b5cf6"),
-    WindowTopbarTitle              = Color3.fromHex("#ede9fe"),
-    WindowTopbarAuthor             = Color3.fromHex("#a78bfa"),
-    WindowTopbarIcon               = Color3.fromHex("#c4b5fd"),
-    TabBackground                  = Color3.fromHex("#1e1b4b"),
-    TabTitle                       = Color3.fromHex("#ede9fe"),
-    TabIcon                        = Color3.fromHex("#8b5cf6"),
-    ElementBackground              = Color3.fromHex("#13102a"),
-    ElementTitle                   = Color3.fromHex("#ede9fe"),
-    ElementDesc                    = Color3.fromHex("#a78bfa"),
-    ElementIcon                    = Color3.fromHex("#7c3aed"),
+    Accent = Color3.fromHex("#1a0a2e"),
+    Background = Color3.fromHex("#0b0b14"),
+    Outline = Color3.fromHex("#5b21b6"),
+    Text = Color3.fromHex("#ede9fe"),
+    Placeholder = Color3.fromHex("#6d28d9"),
+    Button = Color3.fromHex("#1e1b4b"),
+    Icon = Color3.fromHex("#8b5cf6"),
+    Hover = Color3.fromHex("#ede9fe"),
+    WindowBackground = Color3.fromHex("#0b0b14"),
+    WindowShadow = Color3.fromHex("#000000"),
+    WindowTopbarButtonIcon = Color3.fromHex("#8b5cf6"),
+    WindowTopbarTitle = Color3.fromHex("#ede9fe"),
+    WindowTopbarAuthor = Color3.fromHex("#a78bfa"),
+    WindowTopbarIcon = Color3.fromHex("#c4b5fd"),
+    TabBackground = Color3.fromHex("#1e1b4b"),
+    TabTitle = Color3.fromHex("#ede9fe"),
+    TabIcon = Color3.fromHex("#8b5cf6"),
+    ElementBackground = Color3.fromHex("#13102a"),
+    ElementTitle = Color3.fromHex("#ede9fe"),
+    ElementDesc = Color3.fromHex("#a78bfa"),
+    ElementIcon = Color3.fromHex("#7c3aed"),
 })
 WindUI:SetTheme("AxelDark")
 
@@ -36,194 +35,162 @@ local UserInputService = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Aimlock & FOV State
+-- State Variables
 local AimlockEnabled = false
 local AimPart = "HumanoidRootPart"
 local FOV_Visible = true
 local FOV_Radius = 150
-local FOV_Color = Color3.fromHex("#8b5cf6")
-
--- ESP State
 local ESP_Enabled = false
 local ESP_Boxes = false
 local ESP_Names = false
+local HitboxEnabled = false
+local HitboxSize = 2 -- ค่าเริ่มต้นให้เล็กลงเพื่อลดการแล็ค
+local HitboxTransparency = 0.5
 
--- ==================== FOV Circle Drawing ====================
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.NumSides = 100
-FOVCircle.Filled = false
-FOVCircle.Transparency = 1
+-- ==================== Helper Functions ====================
+local function isEnemy(plr)
+    if not plr or plr == lp or not plr.Character then return false end
+    if not lp.Team or not plr.Team then return true end
+    return plr.Team ~= lp.Team
+end
 
--- ==================== ESP System Logic ====================
-local drawings = {}
-local function createESP(plr)
-    local box = Drawing.new("Square")
-    local name = Drawing.new("Text")
-    
-    RS.RenderStepped:Connect(function()
-        if ESP_Enabled and plr ~= lp and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            local root = plr.Character.HumanoidRootPart
-            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-            
-            if onScreen then
-                if ESP_Boxes then
-                    local size = 2000 / pos.Z
-                    box.Visible = true
-                    box.Size = Vector2.new(size, size * 1.5)
-                    box.Position = Vector2.new(pos.X - (size / 2), pos.Y - (size * 0.75))
-                    box.Color = FOV_Color
-                else box.Visible = false end
-                
-                if ESP_Names then
-                    name.Visible = true
-                    name.Text = plr.Name
-                    name.Position = Vector2.new(pos.X, pos.Y - (1300 / pos.Z))
-                    name.Center = true
-                    name.Outline = true
-                    name.Size = 14
-                else name.Visible = false end
-            else box.Visible, name.Visible = false, false end
-        else box.Visible, name.Visible = false, false end
-        
-        if not plr.Parent then box:Remove() name:Remove() end
+-- ==================== Optimized Hitbox System ====================
+local function applyHitbox(plr)
+    if plr == lp then return end
+    plr.CharacterAdded:Connect(function(char)
+        if HitboxEnabled and isEnemy(plr) then
+            task.wait(0.5) -- รอให้ตัวละครโหลดเสร็จ
+            local head = char:FindFirstChild("Head")
+            if head then
+                head.Size = Vector3.new(HitboxSize, HitboxSize, HitboxSize)
+                head.Transparency = HitboxTransparency
+                head.CanCollide = false
+            end
+        end
     end)
 end
-for _, v in pairs(Players:GetPlayers()) do createESP(v) end
-Players.PlayerAdded:Connect(createESP)
+
+-- ==================== Optimized ESP System ====================
+local cacheESP = {}
+
+local function createESP(plr)
+    if plr == lp then return end
+    local draw = {
+        box = Drawing.new("Square"),
+        name = Drawing.new("Text")
+    }
+    draw.box.Thickness, draw.box.ZIndex, draw.box.Transparency = 1, 2000, 0.7
+    draw.name.Size, draw.name.Outline, draw.name.ZIndex, draw.name.Center = 13, true, 2001, true
+    cacheESP[plr] = draw
+end
+
+local function removeESP(plr)
+    if cacheESP[plr] then
+        cacheESP[plr].box:Remove()
+        cacheESP[plr].name:Remove()
+        cacheESP[plr] = nil
+    end
+end
+
+-- ==================== FOV Circle ====================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 60 -- ลดจำนวนเหลี่ยมเพื่อเพิ่ม FPS
+FOVCircle.Transparency = 0.7
 
 -- ==================== UI Creation ====================
 local Window = WindUI:CreateWindow({
-    Title = "Spade Hub",
-    Icon = "target",
+    Title = "Spade Hub V3 [Optimized]",
+    Icon = "zap",
     Author = "by TAR",
-    Size = UDim2.fromOffset(520, 450),
-    Theme = "AxelDark",
+    Size = UDim2.fromOffset(520, 500),
 })
 
--- วางต่อจาก Window:CreateWindow
-Window:EditOpenButton({
-    Title = "Open Spade Hub", -- เปลี่ยนชื่อตามใจชอบ
-    Icon = "monitor",
-    CornerRadius = UDim.new(0,16),
-    StrokeThickness = 2,
-    Color = ColorSequence.new(
-        Color3.fromHex("FF0F7B"), 
-        Color3.fromHex("F89B29")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
-})
+Window:EditOpenButton({ Title = "Open Spade Hub", Icon = "monitor", Draggable = true })
 
-local AimTab = Window:Tab({ Title = "Aim Bot", Icon = "crosshair" })
-local EspTab = Window:Tab({ Title = "ESP",     Icon = "eye"      })
+local AimTab = Window:Tab({ Title = "Combat", Icon = "crosshair" })
+local EspTab = Window:Tab({ Title = "Visuals", Icon = "eye" })
+local MiscTab = Window:Tab({ Title = "Misc", Icon = "settings" })
 
--- Aim Bot Tab
-AimTab:Section({ Title = "Main Aimlock" })
+-- Combat Tab
+AimTab:Section({ Title = "Aimlock" })
+AimTab:Toggle({ Title = "Enable Aimlock", Value = false, Callback = function(v) AimlockEnabled = v end })
+AimTab:Dropdown({ Title = "Target Part", Values = {"Head", "HumanoidRootPart"}, Value = "HumanoidRootPart", Callback = function(v) AimPart = v end })
 
-AimTab:Toggle({
-    Title = "Enable Aimlock",
-    Value = false,
-    Callback = function(v) AimlockEnabled = v end
-})
+AimTab:Section({ Title = "Hitbox Expander" })
+AimTab:Toggle({ Title = "Enable Big Head", Value = false, Callback = function(v) HitboxEnabled = v end })
+AimTab:Slider({ Title = "Hitbox Size", Value = { Min = 1, Max = 15, Default = 2 }, Callback = function(v) HitboxSize = v end })
 
-AimTab:Dropdown({
-    Title = "Target Part",
-    Values = {"Head", "HumanoidRootPart"}, -- เปลี่ยนจาก Body เป็นชื่อ Part จริง
-    Value = "HumanoidRootPart",
-    Callback = function(v) 
-        AimPart = v 
-    end
-})
-
-AimTab:Section({ Title = "FOV Settings" })
-
-AimTab:Toggle({
-    Title = "Show FOV Circle",
-    Value = true,
-    Callback = function(v) FOV_Visible = v end
-})
-
-AimTab:Slider({
-    Title = "FOV Size",
-    Value = { Min = 10, Max = 500, Default = 150 },
-    Callback = function(v) FOV_Radius = v end
-})
-
--- วางไว้ข้างล่างสุดของส่วน Aim Bot Tab
-AimTab:Section({ Title = "UI Settings" })
-
-AimTab:Keybind({
-    Title = "Toggle UI Key",
-    Desc = "ปุ่มสำหรับ เปิด/ปิด หน้าเมนู",
-    Value = "LeftControl", -- เปลี่ยนเป็นชื่อเต็ม เช่น LeftControl หรือ RightControl
-    Callback = function(v)
-        Window:SetToggleKey(Enum.KeyCode[v])
-    end
-})
+AimTab:Section({ Title = "FOV" })
+AimTab:Toggle({ Title = "Show FOV Circle", Value = true, Callback = function(v) FOV_Visible = v end })
+AimTab:Slider({ Title = "FOV Size", Value = { Min = 10, Max = 500, Default = 150 }, Callback = function(v) FOV_Radius = v end })
 
 -- ESP Tab
 EspTab:Section({ Title = "Visuals" })
+EspTab:Toggle({ Title = "Enable ESP", Value = false, Callback = function(v) ESP_Enabled = v end })
+EspTab:Toggle({ Title = "Show Boxes", Value = false, Callback = function(v) ESP_Boxes = v end })
+EspTab:Toggle({ Title = "Show Names", Value = false, Callback = function(v) ESP_Names = v end })
 
-EspTab:Toggle({
-    Title = "Enable ESP",
-    Value = false,
-    Callback = function(v) ESP_Enabled = v end
-})
-
-EspTab:Toggle({
-    Title = "Show Boxes",
-    Value = false,
-    Callback = function(v) ESP_Boxes = v end
-})
-
-EspTab:Toggle({
-    Title = "Show Names",
-    Value = false,
-    Callback = function(v) ESP_Names = v end
-})
-
--- ==================== Main Loop (Aim & FOV) ====================
+-- ==================== Single Optimized Loop ====================
 RS.RenderStepped:Connect(function()
-    -- Update FOV Circle
+    -- Update FOV
     FOVCircle.Visible = FOV_Visible
     FOVCircle.Radius = FOV_Radius
     FOVCircle.Position = UserInputService:GetMouseLocation()
-    FOVCircle.Color = FOV_Color
+    FOVCircle.Color = Color3.fromRGB(139, 92, 246)
 
-    -- Aimlock Logic
-    if AimlockEnabled then
-        local target = nil
-        local shortestDist = FOV_Radius 
-        
-        for _, v in pairs(Players:GetPlayers()) do
-            if v ~= lp and v.Character and v.Character:FindFirstChild(AimPart) then
-                local pos, onScreen = Camera:WorldToViewportPoint(v.Character[AimPart].Position)
-                if onScreen then
+    local target = nil
+    local shortestDist = FOV_Radius
+
+    for plr, draw in pairs(cacheESP) do
+        local char = plr.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+
+        if ESP_Enabled and isEnemy(plr) and char and root and hum and hum.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+            if onScreen then
+                local size = (2000 / pos.Z)
+                
+                -- Optimized Aimlock Scan (ทำในลูปเดียวกับ ESP เพื่อประหยัดทรัพยากร)
+                if AimlockEnabled then
                     local mousePos = UserInputService:GetMouseLocation()
                     local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                    
                     if dist < shortestDist then
                         shortestDist = dist
-                        target = v
+                        target = plr
                     end
                 end
+
+                -- ESP Rendering
+                if ESP_Boxes then
+                    draw.box.Visible = true
+                    draw.box.Size = Vector2.new(size, size * 1.5)
+                    draw.box.Position = Vector2.new(pos.X - (size / 2), pos.Y - (size * 0.75))
+                    draw.box.Color = Color3.fromRGB(139, 92, 246)
+                else draw.box.Visible = false end
+
+                if ESP_Names then
+                    draw.name.Visible = true
+                    draw.name.Text = string.format("%s [%d]", plr.Name, math.floor(hum.Health))
+                    draw.name.Position = Vector2.new(pos.X, pos.Y - (size * 0.75) - 18)
+                else draw.name.Visible = false end
+            else
+                draw.box.Visible = false
+                draw.name.Visible = false
             end
+        else
+            draw.box.Visible = false
+            draw.name.Visible = false
         end
-        
-        if target then
-            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Character[AimPart].Position)
-        end
+    end
+
+    if target and target.Character and target.Character:FindFirstChild(AimPart) then
+        Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Character[AimPart].Position)
     end
 end)
 
-
-local Keybind = Tab:Keybind({
-    Title = "Keybind",
-    Desc = "",
-    Value = "Ctrl",
-    Callback = function(v)
-        Window:SetToggleKey(Enum.KeyCode[v])
-    end
-})
+-- Initialize Players
+for _, v in pairs(Players:GetPlayers()) do createESP(v) applyHitbox(v) end
+Players.PlayerAdded:Connect(function(v) createESP(v) applyHitbox(v) end)
+Players.PlayerRemoving:Connect(removeESP)
