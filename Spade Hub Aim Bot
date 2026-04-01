@@ -1,221 +1,1969 @@
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-WindUI:SetNotificationLower(true)
-WindUI:SetTheme("AxelDark")
+local StartTick = tick()
 
--- ==================== Services & Variables ====================
-local RS = game:GetService("RunService")
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "VOXY",
+    SubTitle = "Anime Ghosts",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Darker",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
+    Priority = Window:AddTab({ Title = "Priority", Icon = "list" }),
+    GameMode = Window:AddTab({ Title = "Game Mode", Icon = "gamepad-2" }),
+    Upgrade = Window:AddTab({ Title = "Upgrade", Icon = "trending-up" }),
+    Gacha = Window:AddTab({ Title = "Gacha", Icon = "star" }),
+    Event = Window:AddTab({ Title = "Event", Icon = "calendar" }),
+    Misc = Window:AddTab({ Title = "Misc", Icon = "box" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local lp = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local Workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
 
--- State Variables
-local AimlockEnabled = false
-local AimPart = "HumanoidRootPart"
-local AimSmooth = 1 
-local FOV_Visible = true
-local FOV_Radius = 150
+local BridgeNetEvent = ReplicatedStorage:WaitForChild("ffrostflame_bridgenet2@1.0.0"):WaitForChild("dataRemoteEvent")
+local ScriptLibrary = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Library"))
+local mapData = require(ReplicatedStorage.Framework.Modules.Data.MapData)
 
-local ESP_Enabled = false
-local ESP_Boxes, ESP_Names, ESP_Tracers, ESP_Skeleton = false, false, false, false
-local ESP_MainColor = Color3.fromRGB(139, 92, 246)
+local Unloaded = false
+local UnloadCallbacks = {}
+local function onUnload(cb) table.insert(UnloadCallbacks, cb) end
+local function Notify(desc, time) Fluent:Notify({Title = "VOXY", Content = desc, Duration = time}) end
 
-local cacheESP = {}
+local playerMap = "1"
+local playerMode = nil
+local UnifiedFilters = {Candy5=true,ForceField=true,Yeager=true,DimensionalBarrier=true,Electric6=true,Shirayuki=true,SRank=true,Singularity=true,Sonic=true,Haunt5=true,EvilEye=true,Visored=true,N6=true,AttackSerum=true,Suggar5=true,Mythical=true,GoldenEgg=true,Earth=true,Eggfall5=true,DragonFruit=true,BadBunny=true,HellDevil=true,AdaptiveCore=true,National=true,HolyTrinity=true,N9=true,Nozarashi=true,Blessing=true,ChainsawDevil=true,TrueQuincy=true,BlackHaki=true,HolyEaster=true,ControlDevil=true,DarkFruit=true,GoldenRotation=true,Flame=true,Blessed6=true,OperationFruit=true,Chocolate5=true,Jupiter=true,SymbolOfPurity=true,Blessing5=true,Secret=true,Mist=true,Afterlife=true,Eggfall6=true,Captain=true,PhoenixFruit=true,Suggar6=true,AlphaCore=true,ViceCaptain=true,Holy=true,TurboGranny=true,Haunt6=true,Phantom=true,Chocolate6=true,RedHaki=true,Ruin6=true,Candy6=true,Blessed5=true,Ruin5=true,Electric5=true,Blessing6=true,Ackerman=true,ColossalSerum=true,GunDevil=true}
 
--- ==================== Helper Functions ====================
-local function isEnemy(plr)
-    if not plr or plr == lp or not plr.Character then return false end
-    if not lp.Team or not plr.Team then return true end
-    return plr.Team ~= lp.Team
+task.spawn(function()
+    while task.wait(1) and not Unloaded do
+        pcall(function()
+            if ScriptLibrary and ScriptLibrary.PlayerData then playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end
+            playerMode = player:GetAttribute('Mode') or nil
+        end)
+    end
+end)
+
+local function FireBridge(...)
+    local args = {...}
+    args.n = #args
+    pcall(function() BridgeNetEvent:FireServer({args, "\x02"}) end)
 end
 
-local function checkVisible(targetPart, character)
-    local castParams = RaycastParams.new()
-    castParams.FilterType = Enum.RaycastFilterType.Exclude
-    castParams.FilterDescendantsInstances = {lp.Character, character, Camera} -- ยกเว้นตัวเราและตัวศัตรู
+local function GetGachaCFrame(target, offsetX, offsetZ)
+    local root = target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+    if root then return root.CFrame * CFrame.new(offsetX, 4, offsetZ) end
+    return target:GetPivot() * CFrame.new(offsetX, 4, offsetZ)
+end
+
+local function teleportToGamemodeNPC(mapId, keywords)
+    pcall(function()
+        local mapFolder = workspace._MAP:WaitForChild(tostring(mapId), 5)
+        if not mapFolder then return end
+        
+        local interactions = mapFolder:WaitForChild("Interactions", 5)
+        if not interactions then return end
+
+        local targets = {}
+        for _, v in ipairs(interactions:GetChildren()) do table.insert(targets, v) end
+        if interactions:FindFirstChild("Gamemode") then
+            for _, v in ipairs(interactions.Gamemode:GetChildren()) do table.insert(targets, v) end
+        end
+
+        for _, v in ipairs(targets) do
+            local name = string.lower(tostring(v.Name))
+            local attrName = string.lower(tostring(v:GetAttribute("Name") or ""))
+            local attrId = string.lower(tostring(v:GetAttribute("Id") or ""))
+            
+            for _, kw in ipairs(keywords) do
+                local lowerKw = string.lower(kw)
+                if string.find(name, lowerKw) or string.find(attrName, lowerKw) or string.find(attrId, lowerKw) then
+                    if player.Character and player.Character.PrimaryPart then
+                        player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                        
+                        local targetPart = v:FindFirstChild("HumanoidRootPart") or v:FindFirstChild("Rig") or v:FindFirstChild("Range") or v
+                        local cf = targetPart:IsA("Model") and targetPart:GetPivot() or targetPart.CFrame
+                        
+                        player.Character:SetPrimaryPartCFrame(cf * CFrame.new(0, 3, 0))
+                    end
+                    return true
+                end
+            end
+        end
+    end)
+end
+
+local function hasTokenAmountToRoll(token)
+    local check = false
+    pcall(function()
+        local PlayerData = ScriptLibrary and ScriptLibrary.PlayerData
+        if not PlayerData then return end
+        local VIPGamepass = PlayerData.Gamepasses and PlayerData.Gamepasses.VIPGamepass
+        local inventory = PlayerData.Inventory
+        if not inventory then return end
+        local amountNeeded = VIPGamepass and 7 or 10
+        local tokenAmount = inventory[token]
+        if tokenAmount and tonumber(tokenAmount) >= amountNeeded then check = true end
+    end)
+    return check
+end
+
+local function getUnitsAndSwords()
+    local pList, pDict = {}, {}
+    local wList, wDict = {}, {}
+    pcall(function()
+        local pData = ScriptLibrary.PlayerData
+        if pData.Pets then
+            for uuid, data in pairs(pData.Pets) do
+                local name = tostring(data.Id or data.Name or "Unknown")
+                local level = data.Level and (" [Lv."..data.Level.."]") or ""
+                local passive = (data.Buffs and data.Buffs.Passive) or data.Passive or data.Trait or (data.Buffs and data.Buffs["Easter Passive"]) or data["Easter Passive"] or ""
+                if passive ~= "" then passive = " ("..passive..")" end
+                local equipped = data.Equipped and " [E]" or ""
+                
+                local label = name .. level .. passive .. equipped .. " [" .. tostring(uuid):sub(1,6) .. "]"
+                table.insert(pList, label)
+                pDict[label] = uuid
+            end
+        end
+        if pData.Weapons then
+            for uuid, data in pairs(pData.Weapons) do
+                local name = tostring(data.Id or data.Name or "Unknown")
+                local level = data.Level and (" [Lv."..data.Level.."]") or ""
+                local enchant = (data.Buffs and data.Buffs.Enchantment) or data.Enchantment or (data.Buffs and data.Buffs["Easter Enchantment"]) or data["Easter Enchantment"] or ""
+                if enchant ~= "" then enchant = " ("..enchant..")" end
+                local equipped = data.Equipped and " [E]" or ""
+                
+                local label = name .. level .. enchant .. equipped .. " [" .. tostring(uuid):sub(1,6) .. "]"
+                table.insert(wList, label)
+                wDict[label] = uuid
+            end
+        end
+    end)
+    if #pList == 0 then table.insert(pList, "No Pets Found") end
+    if #wList == 0 then table.insert(wList, "No Swords Found") end
+    table.sort(pList)
+    table.sort(wList)
+    return pList, pDict, wList, wDict
+end
+
+local NormalPassiveList = {}
+local EasterPassiveList = {}
+local EnchantmentList = {}
+local EasterEnchantmentList = {}
+
+pcall(function()
+    local PassiveData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GachaData.Passive)
+    local EnchantData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GachaData.Enchantment)
+    local EasterPassiveData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GachaData["Easter Passive"])
+    local EasterEnchantData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GachaData["Easter Enchantment"])
     
-    local ray = workspace:Raycast(Camera.CFrame.Position, (targetPart.Position - Camera.CFrame.Position), castParams)
-    return ray == nil -- ถ้า ray เป็น nil แสดงว่าไม่มีอะไรกั้น
+    if PassiveData and PassiveData[2] and PassiveData[2].Normal then
+        for _, data in pairs(PassiveData[2].Normal) do
+            if data.Tiers and #data.Tiers == 1 then
+                table.insert(NormalPassiveList, data.Name)
+            elseif data.Tiers then
+                for tier = 1, #data.Tiers do
+                    table.insert(NormalPassiveList, data.Name .. tier)
+                end
+            end
+        end
+    end
+
+    if EnchantData and EnchantData[2] and EnchantData[2].Normal then
+        for _, data in pairs(EnchantData[2].Normal) do
+            if data.Tiers then
+                for tier = 1, #data.Tiers do
+                    table.insert(EnchantmentList, data.Name .. tier)
+                end
+            end
+        end
+    end
+
+    if EasterPassiveData and EasterPassiveData[2] and EasterPassiveData[2].Normal then
+        for _, data in pairs(EasterPassiveData[2].Normal) do
+            if data.Tiers and #data.Tiers == 1 then
+                table.insert(EasterPassiveList, data.Name)
+            elseif data.Tiers then
+                for tier = 1, #data.Tiers do
+                    table.insert(EasterPassiveList, data.Name .. tier)
+                end
+            end
+        end
+    end
+
+    if EasterEnchantData and EasterEnchantData[2] and EasterEnchantData[2].Normal then
+        for _, data in pairs(EasterEnchantData[2].Normal) do
+            if data.Tiers and #data.Tiers == 1 then
+                table.insert(EasterEnchantmentList, data.Name)
+            elseif data.Tiers then
+                for tier = 1, #data.Tiers do
+                    table.insert(EasterEnchantmentList, data.Name .. tier)
+                end
+            end
+        end
+    end
+end)
+
+if #NormalPassiveList == 0 then for k, v in pairs(UnifiedFilters) do table.insert(NormalPassiveList, k) end end
+if #EasterPassiveList == 0 then for k, v in pairs(UnifiedFilters) do table.insert(EasterPassiveList, k) end end
+if #EnchantmentList == 0 then EnchantmentList = {'Blessed6', 'Blessed5', 'Haunt6', 'Haunt5', 'Ruin6', 'Ruin5', 'Electric6', 'Electric5'} end
+if #EasterEnchantmentList == 0 then for k, v in pairs(UnifiedFilters) do table.insert(EasterEnchantmentList, k) end end
+
+table.sort(NormalPassiveList)
+table.sort(EasterPassiveList)
+table.sort(EnchantmentList)
+table.sort(EasterEnchantmentList)
+
+local function getPlayerGamemode()
+    local gamemode = nil
+    pcall(function()
+        for _, v in pairs(ReplicatedStorage:WaitForChild('Server'):WaitForChild('Gamemode'):GetChildren()) do
+            if v:FindFirstChild('Players') and v['Players']:GetAttribute(tostring(player.UserId)) then gamemode = v end
+        end
+    end)
+    return gamemode
 end
 
-local function createDrawing(type, properties)
-    local obj = Drawing.new(type)
-    for i, v in pairs(properties) do obj[i] = v end
-    return obj
+local function getEnemyInGamemode(gamemode)
+    local targetFolder = nil
+    pcall(function()
+        for _, folder in ipairs(Workspace['_ENEMIES']['Server']['Gamemode']:GetChildren()) do
+            if folder:IsA('Folder') and folder.Name == gamemode.Name then targetFolder = folder end
+        end
+    end)
+    if not targetFolder then return nil end
+    local HumanoidRootPart = player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+    if not HumanoidRootPart then return end
+    local distance = math.huge;
+    local enemy = nil
+    for _,v in ipairs(targetFolder:GetChildren()) do
+        local HP = v:GetAttribute('HP');
+        local Shield = v:GetAttribute('Shield')
+        if HP and HP > 0 and Shield ~= true and v:IsA('Part') then
+            local magnitude = (HumanoidRootPart.Position - v.Position).magnitude
+            if magnitude < distance then distance = magnitude;
+            enemy = v end
+        end
+    end
+    return enemy
 end
 
--- ==================== ESP Management ====================
-local function createESP(plr)
-    if plr == lp then return end
-    cacheESP[plr] = {
-        box = createDrawing("Square", {Thickness = 1.5, ZIndex = 10, Filled = false}),
-        boxOutline = createDrawing("Square", {Thickness = 3, Color = Color3.new(0,0,0), Transparency = 0.5, ZIndex = 9}),
-        name = createDrawing("Text", {Size = 13, Outline = true, Center = true, ZIndex = 11, Color = Color3.new(1,1,1)}),
-        line = createDrawing("Line", {Thickness = 1.2, Transparency = 0.6, ZIndex = 8}),
-        skeleton = {
-            h2t = createDrawing("Line", {Thickness = 1.5}), t2la = createDrawing("Line", {Thickness = 1.5}),
-            t2ra = createDrawing("Line", {Thickness = 1.5}), t2ll = createDrawing("Line", {Thickness = 1.5}),
-            t2rl = createDrawing("Line", {Thickness = 1.5})
-        }
-    }
-end
+local function getEnemyInDefense(defense) return getEnemyInGamemode(defense) end
 
-local function removeESP(plr)
-    if cacheESP[plr] then
-        local d = cacheESP[plr]
-        d.box:Remove(); d.boxOutline:Remove(); d.name:Remove(); d.line:Remove()
-        for _, l in pairs(d.skeleton) do l:Remove() end
-        cacheESP[plr] = nil
+local function getEnemyFolderInCurrentMap()
+    for _,folder in ipairs(Workspace['_ENEMIES']['Server']:GetChildren()) do
+        if folder:IsA('Folder') and folder.Name==tostring(playerMap) and #folder:GetChildren()>0 then return folder end
     end
 end
 
-local FOVCircle = createDrawing("Circle", {Thickness = 2, NumSides = 60, Transparency = 0.7})
+local function getEnemyInCurrentMap()
+    local HumanoidRootPart = player.Character and player.Character:FindFirstChild('HumanoidRootPart')
+    if not HumanoidRootPart then return end
+    local distance=math.huge;
+    local enemy=nil
+    local targetFolder = getEnemyFolderInCurrentMap()
+    if targetFolder then
+        for _,v in ipairs(targetFolder:GetChildren()) do
+            local HP=v:GetAttribute('HP');
+            local Shield=v:GetAttribute('Shield')
+            if HP and HP>0 and Shield~=true and v:IsA('Part') then
+                local magnitude=(HumanoidRootPart.Position-v.Position).magnitude
+                if magnitude<distance then distance=magnitude;
+                enemy=v end
+            end
+        end
+    end
+    return enemy
+end
 
--- ==================== UI Creation ====================
-local Window = WindUI:CreateWindow({
-    Title = "Spade Hub V3 [Final]",
-    Icon = "zap",
-    Author = "by TAR",
-    Size = UDim2.fromOffset(520, 520)
-})
+local function attack(enemy)
+    if enemy then FireBridge('ClickSystem','Execute',enemy);
+    ScriptLibrary.Target=enemy else FireBridge('ClickSystem','Execute') end
+end
 
--- คืนค่าปุ่มเปิด UI แบบที่คุณต้องการ
-Window:EditOpenButton({
-    Title = "Open Spade Hub",
-    Icon = "monitor",
-    CornerRadius = UDim.new(0,16),
-    StrokeThickness = 2,
-    Color = ColorSequence.new(
-        Color3.fromHex("FF0F7B"), 
-        Color3.fromHex("F89B29")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
-})
+task.spawn(function()
+    while task.wait() and not Unloaded do
+        if getgenv().autoAttackEnabled then
+            local playerGamemode = getPlayerGamemode()
+            if not playerGamemode then
+                local enemyInMap = getEnemyInCurrentMap()
+                if enemyInMap then attack(enemyInMap.Name) else attack() end
+            else
+                local enemy = nil
+                if playerMode=='Dungeon' or playerMode=='Raid' or playerMode=='Infinity Castle' then enemy = getEnemyInGamemode(playerGamemode)
+                elseif playerMode=='Defense Mode' or playerMode=='Easter 2026 Event' or playerMode=='Easter Raid' then enemy = getEnemyInDefense(playerGamemode) end
+                if enemy then attack(enemy.Name) else attack() end
+            end
+        end
+    end
+end)
 
-local AimTab = Window:Tab({ Title = "Combat", Icon = "crosshair" })
-local EspTab = Window:Tab({ Title = "Visuals", Icon = "eye" })
-local MiscTab = Window:Tab({ Title = "Misc", Icon = "settings" })
+local function getQuests()
+    local quests = {}
+    pcall(function()
+        local questGui = player.PlayerGui:FindFirstChild("SideGUI") and player.PlayerGui.SideGUI:FindFirstChild("Content") and player.PlayerGui.SideGUI.Content:FindFirstChild("ActiveQuest")
+        if questGui then
+            for _, obj in ipairs(questGui:GetDescendants()) do
+                if obj:IsA("TextLabel") then
+                    local text = obj.Text
+                    if text:find("Defeat") then
+                        local npc = text:gsub("Defeat%s*", ""):match("^[^%[]+")
+                        npc = npc and npc:match("^%s*(.-)%s*$")
+                        local inside = text:match("%[(.-)%]")
+                        if inside then
+                            local current, required = inside:match("(%d+)%/(%d+)")
+                            if current and required then
+                                table.insert(quests, {
+                                    npc = npc,
+                                    current = tonumber(current),
+                                    required = tonumber(required),
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return quests
+end
 
--- [Combat Tab]
-AimTab:Section({ Title = "Aimlock" })
-AimTab:Toggle({ Title = "Enable Aimlock", Value = false, Callback = function(v) AimlockEnabled = v end })
-AimTab:Dropdown({ Title = "Target Part", Values = {"Head", "HumanoidRootPart"}, Value = "HumanoidRootPart", Callback = function(v) AimPart = v end })
-AimTab:Slider({ Title = "Aim Smoothness", Value = { Min = 1, Max = 10, Default = 1 }, Callback = function(v) AimSmooth = v end })
+local function autoQuestFunction()
+    while getgenv().autoQuestEnabled do
+        local quests = getQuests()
+        for i, quest in ipairs(quests) do
+            while quest.current < quest.required and getgenv().autoQuestEnabled do
+                local targetUid = nil
+                local clientEnemies = workspace:FindFirstChild("_ENEMIES") and workspace._ENEMIES:FindFirstChild("Client")
+                local serverEnemies = workspace:FindFirstChild("_ENEMIES") and workspace._ENEMIES:FindFirstChild("Server")
 
-AimTab:Section({ Title = "FOV Settings" })
-AimTab:Toggle({ Title = "Show FOV", Value = true, Callback = function(v) FOV_Visible = v end })
-AimTab:Slider({ Title = "FOV Size", Value = { Min = 10, Max = 500, Default = 150 }, Callback = function(v) FOV_Radius = v end })
-
--- [Visuals Tab]
-EspTab:Section({ Title = "Colors" })
-EspTab:Colorpicker({ Title = "ESP Color", Default = ESP_MainColor, Callback = function(v) ESP_MainColor = v end })
-
-EspTab:Section({ Title = "Toggles" })
-EspTab:Toggle({ Title = "Enable ESP Master", Value = false, Callback = function(v) ESP_Enabled = v end })
-EspTab:Toggle({ Title = "Boxes", Value = false, Callback = function(v) ESP_Boxes = v end })
-EspTab:Toggle({ Title = "Names", Value = false, Callback = function(v) ESP_Names = v end })
-EspTab:Toggle({ Title = "Tracers", Value = false, Callback = function(v) ESP_Tracers = v end })
-EspTab:Toggle({ Title = "Skeleton", Value = false, Callback = function(v) ESP_Skeleton = v end })
-
--- [Misc Tab]
-MiscTab:Section({ Title = "Settings" })
-MiscTab:Keybind({ Title = "Toggle UI Key", Value = "LeftControl", Callback = function(v) Window:SetToggleKey(Enum.KeyCode[v]) end })
-MiscTab:Button({ Title = "Unload Script", Callback = function() FOVCircle:Remove(); for _, v in pairs(cacheESP) do removeESP(v) end Window:Destroy() end })
-
--- ==================== Main Loop ====================
-RS.RenderStepped:Connect(function()
-    FOVCircle.Visible = FOV_Visible
-    FOVCircle.Radius = FOV_Radius
-    FOVCircle.Position = UserInputService:GetMouseLocation()
-    FOVCircle.Color = ESP_MainColor
-
-    local target = nil
-    local shortestDist = FOV_Radius
-
-    for plr, draw in pairs(cacheESP) do
-        local char = plr.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local hum = char and char:FindFirstChild("Humanoid")
-        local aimPosPart = char and char:FindFirstChild(AimPart)
-
-        if char and root and hum and hum.Health > 0 and isEnemy(plr) then
-            local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
-            
-            if onScreen then
-                local size = (2000 / pos.Z)
-
-                -- Aimlock Logic พร้อม Wall Check
-                if AimlockEnabled and aimPosPart then
-                    local mousePos = UserInputService:GetMouseLocation()
-                    local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                    if dist < shortestDist then
-                        -- เช็คว่าไม่ติดกำแพงก่อนถึงจะเลือกเป็นเป้าหมาย
-                        if checkVisible(aimPosPart, char) then
-                            shortestDist = dist
-                            target = plr
+                if clientEnemies then
+                    for _, enemy in pairs(clientEnemies:GetChildren()) do
+                        if enemy.Name ~= "Highlight" then
+                            local billboard = enemy:FindFirstChild("EnemyBillboard", true)
+                            if billboard and billboard:FindFirstChild("Title") then
+                                local mName = billboard.Title.Text:gsub("<[^>]+>", ""):match("^%s*(.-)%s*$")
+                                if mName == quest.npc then
+                                    targetUid = enemy.Name
+                                    break
+                                end
+                            end
                         end
                     end
                 end
 
-                -- ESP Logic
-                if ESP_Enabled then
-                    draw.box.Color = ESP_MainColor
-                    draw.line.Color = ESP_MainColor
-                    if ESP_Boxes then
-                        draw.box.Visible, draw.boxOutline.Visible = true, true
-                        draw.box.Size = Vector2.new(size, size * 1.5)
-                        draw.box.Position = Vector2.new(pos.X - (size/2), pos.Y - (size*0.75))
-                        draw.boxOutline.Size, draw.boxOutline.Position = draw.box.Size, draw.box.Position
-                    else draw.box.Visible, draw.boxOutline.Visible = false, false end
-
-                    if ESP_Names then
-                        draw.name.Visible, draw.name.Text = true, string.format("%s [%d]", plr.Name, math.floor(hum.Health))
-                        draw.name.Position = Vector2.new(pos.X, pos.Y - (size*0.75) - 18)
-                    else draw.name.Visible = false end
-
-                    if ESP_Tracers then
-                        draw.line.Visible = true
-                        draw.line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-                        draw.line.To = Vector2.new(pos.X, pos.Y + (size*0.75))
-                    else draw.line.Visible = false end
-
-                    if ESP_Skeleton then
-                        local function setL(line, p1, p2)
-                            if p1 and p2 then
-                                local v1, o1 = Camera:WorldToViewportPoint(p1.Position); local v2, o2 = Camera:WorldToViewportPoint(p2.Position)
-                                if o1 and o2 then line.Visible, line.From, line.To, line.Color = true, Vector2.new(v1.X, v1.Y), Vector2.new(v2.X, v2.Y), ESP_MainColor return end
+                if targetUid and serverEnemies then
+                    local mapFolder = serverEnemies:FindFirstChild(tostring(playerMap))
+                    if mapFolder then
+                        local serverPart = mapFolder:FindFirstChild(targetUid)
+                        if serverPart and serverPart:IsA("BasePart") then
+                            local char = player.Character
+                            local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                            if myRoot then
+                                myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                local targetPos = serverPart.Position
+                                local offsetPos = targetPos + Vector3.new(0, 4, 3)
+                                myRoot.CFrame = CFrame.new(offsetPos, Vector3.new(targetPos.X, offsetPos.Y, targetPos.Z))
                             end
-                            line.Visible = false
+                            local hp = serverPart:GetAttribute("HP")
+                            if hp and hp > 0 then
+                                FireBridge("ClickSystem", "Execute", tostring(targetUid))
+                            end
                         end
-                        local t = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-                        local la, ra = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm"), char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm")
-                        local ll, rl = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg"), char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg")
-                        setL(draw.skeleton.h2t, char:FindFirstChild("Head"), t); setL(draw.skeleton.t2la, t, la); setL(draw.skeleton.t2ra, t, ra)
-                        setL(draw.skeleton.t2ll, t, ll); setL(draw.skeleton.t2rl, t, rl)
-                    else for _, l in pairs(draw.skeleton) do l.Visible = false end end
-                else
-                    draw.box.Visible, draw.boxOutline.Visible, draw.name.Visible, draw.line.Visible = false, false, false, false
-                    for _, l in pairs(draw.skeleton) do l.Visible = false end
+                    end
                 end
-            else
-                draw.box.Visible, draw.boxOutline.Visible, draw.name.Visible, draw.line.Visible = false, false, false, false
-                for _, l in pairs(draw.skeleton) do l.Visible = false end
+                task.wait(0.5)
+                quests = getQuests()
+                quest = quests[i]
+                if not quest then break end
             end
-        else
-            draw.box.Visible, draw.boxOutline.Visible, draw.name.Visible, draw.line.Visible = false, false, false, false
-            for _, l in pairs(draw.skeleton) do l.Visible = false end
+        end
+        task.wait(1)
+    end
+end
+
+local function autoClaimQuestFunction()
+    while getgenv().autoClaimQuestEnabled do
+        FireBridge("QuestSystem", "Check", "Main", 100)
+        task.wait(5)
+    end
+end
+
+local ValuesRaid = {}
+local ValuesDungeon = {}
+pcall(function()
+    local raidData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GamemodeData.Raid)
+    for _, data in pairs(raidData) do if data.Name then table.insert(ValuesRaid, data.Name) end end
+    local dungeonData = require(game:GetService("ReplicatedStorage").Framework.Modules.Data.GamemodeData.Dungeon)
+    for _, data in pairs(dungeonData) do if data.Name then table.insert(ValuesDungeon, data.Name) end end
+end)
+if #ValuesRaid == 0 then ValuesRaid = {"TitanTown", "HollowDimension"} end
+if #ValuesDungeon == 0 then ValuesDungeon = {"CrystalCave", "PunkCity"} end
+
+local function CreateAutoLeave(selectedWaveVar, teleportDest)
+    return function()
+        local toggleName = "autoLeave" .. selectedWaveVar:gsub("selectedWave", "") .. "WaveXEnabled"
+        while getgenv()[toggleName] do
+            pcall(function()
+                local modeGui = player.PlayerGui:FindFirstChild("Mode")
+                if modeGui and modeGui:FindFirstChild("Content") then
+                    local possibleWaves = {}
+                    
+                    for _, desc in ipairs(modeGui.Content:GetDescendants()) do
+                        if desc:IsA("TextLabel") and desc.Visible then
+                            local txt = desc.Text:gsub("<[^>]+>", "")
+                            local lTxt = string.lower(txt)
+                            local dName = string.lower(desc.Name)
+                            local pName = string.lower(desc.Parent and desc.Parent.Name or "")
+                            
+                            if string.find(lTxt, "start") or string.find(lTxt, "in ") or string.find(lTxt, "cooldown") then
+                                continue
+                            end
+                        
+                            local curr, mx = string.match(lTxt, "(%d+)%s*/%s*(%d+)")
+                            if curr then 
+                                table.insert(possibleWaves, tonumber(curr))
+                                continue
+                            end
+                            
+                            local wMatch = string.match(lTxt, "wave%s*[:%-]?%s*(%d+)")
+                            if wMatch then 
+                                table.insert(possibleWaves, tonumber(wMatch))
+                                continue
+                            end
+        
+                            if string.find(pName, "wave") or string.find(dName, "wave") then
+                                local exactMatch = string.match(lTxt, "^%s*(%d+)%s*$")
+                                if exactMatch then
+                                
+                                    if not string.find(dName, "max") and not string.find(pName, "max") then
+                                        table.insert(possibleWaves, tonumber(exactMatch))
+                                    end
+                                end
+                            end
+                        end
+                    end
+        
+                    if #possibleWaves > 0 then
+                        local currentWave = math.huge
+                        for _, v in ipairs(possibleWaves) do
+                            if v > 0 and v < currentWave then 
+                                currentWave = v 
+                            end
+                        end
+                        
+                        local selectedWave = tonumber(getgenv()[selectedWaveVar]) or 1
+                        if currentWave ~= math.huge and currentWave >= selectedWave then
+                            Notify("Auto Leave Triggered! Reached Wave: " .. tostring(currentWave), 5)
+                            FireBridge("TeleportSystem", "To", teleportDest)
+                            task.wait(5)
+                        end
+                    end
+                end
+            end)
+            task.wait(1)
         end
     end
+end
 
-    -- Smooth Aimlock Execute
-    if target and target.Character and target.Character:FindFirstChild(AimPart) then
-        local goal = CFrame.lookAt(Camera.CFrame.Position, target.Character[AimPart].Position)
-        Camera.CFrame = Camera.CFrame:Lerp(goal, 1/AimSmooth)
+local autoLeaveDungeonWaveFunction = CreateAutoLeave("selectedWaveDungeon", 4)
+local autoLeaveRaidWaveFunction = CreateAutoLeave("selectedWaveRaid", 1)
+local autoLeaveInfinityCastleWaveFunction = CreateAutoLeave("selectedWaveInfinityCastle", 1)
+local autoLeaveDefenseModeWaveFunction = CreateAutoLeave("selectedWaveDefenseMode", 1)
+local autoLeaveEasterWaveFunction = CreateAutoLeave("selectedWaveEaster", "Easter 2026 Event")
+
+getgenv().GamemodeCooldowns = {
+    ["Dungeon"] = 0,
+    ["Raid"] = 0,
+    ["Infinity Castle"] = 0,
+    ["Defense Mode"] = 0,
+    ["Easter Raid"] = 0
+}
+
+task.spawn(function()
+    local Remote = game:GetService("ReplicatedStorage"):WaitForChild("ffrostflame_bridgenet2@1.0.0", 10)
+    if Remote then
+        local dataRemote = Remote:WaitForChild("dataRemoteEvent", 10)
+        if dataRemote then
+            dataRemote.OnClientEvent:Connect(function(args)
+                pcall(function()
+                    local data = args["\2"]
+                    if data and data[1] and data[1][1] == "Notify" then
+                        local text = data[1][2]
+                        local cleanText = text:gsub("<[^>]+>", "")
+                        if string.find(cleanText, "Create/Join") then
+                            local modeName = cleanText:match("Create/Join%s+(.-)%s+in")
+                            if modeName then
+                                local min = cleanText:match("(%d+)%s*m") or 0
+                                local sec = cleanText:match("(%d+)%s*s") or 0
+                                local totalSeconds = (tonumber(min) * 60) + tonumber(sec)
+                                
+                                if totalSeconds > 0 then
+                                    getgenv().GamemodeCooldowns[modeName] = tick() + totalSeconds
+                                    Notify(modeName .. " Cooldown: " .. min .. "m " .. sec .. "s", 3)
+                                end
+                            end
+                        end
+                    end
+                end)
+            end)
+        end
     end
 end)
 
-for _, v in pairs(Players:GetPlayers()) do createESP(v) end
-Players.PlayerAdded:Connect(createESP)
-Players.PlayerRemoving:Connect(removeESP)
+local function isGamemodeOnCooldown(modeName)
+    local cooldownEnd = getgenv().GamemodeCooldowns[modeName] or 0
+    if tick() < cooldownEnd then
+        return true 
+    end
+    return false
+end
+
+local TaskToEnv = {
+    ["Farm Monsters"] = "autoTeleportMonster",
+    ["Auto Dungeon"] = "autoDungeonEnabled",
+    ["Auto Raid"] = "autoRaidEnabled",
+    ["Auto Infinity Castle"] = "autoInfinityCastleEnabled",
+    ["Auto Defense Mode"] = "autoDefenseModeEnabled",
+    ["Auto Easter Event"] = "autoEasterEnabled"
+}
+
+local TaskToModeName = {
+    ["Auto Dungeon"] = "Dungeon",
+    ["Auto Raid"] = "Raid",
+    ["Auto Infinity Castle"] = "Infinity Castle",
+    ["Auto Defense Mode"] = "Defense Mode",
+    ["Auto Easter Event"] = "Easter Raid"
+}
+
+local function getTopPriorityTask()
+    if not getgenv().enablePrioritySystem then return nil end
+    local priorities = {
+        getgenv().priority1, getgenv().priority2, getgenv().priority3,
+        getgenv().priority4, getgenv().priority5
+    }
+    
+    for _, taskName in ipairs(priorities) do
+        if taskName and taskName ~= "None" then
+            local envKey = TaskToEnv[taskName]
+            if envKey and getgenv()[envKey] then
+                local modeName = TaskToModeName[taskName]
+                
+                if modeName and isGamemodeOnCooldown(modeName) then
+                    continue
+                end
+                
+                return taskName
+            end
+        end
+    end
+    
+    if getgenv().autoTeleportMonster then return "Farm Monsters" end
+    return nil
+end
+
+local function autoDungeonFunction()
+    while getgenv().autoDungeonEnabled do
+        local topTask = getTopPriorityTask()
+        if getgenv().enablePrioritySystem and topTask and topTask ~= "Auto Dungeon" then task.wait(1) else
+            if not getPlayerGamemode() then
+                if isGamemodeOnCooldown("Dungeon") then task.wait(2) continue end
+                
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                local pMap = tostring(playerMap)
+                if pMap ~= "1" and pMap ~= "4" and pMap ~= "Easter 2026 Event" and pMap ~= "Lobby" then getgenv().lastFarmMap = pMap end
+                
+                if tostring(playerMap) ~= "4" then
+                    FireBridge("TeleportSystem", "To", 4)
+                    task.wait(4.5)
+                    pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                end
+                teleportToGamemodeNPC(4, {"dungeon"})
+                task.wait(1.5)
+                local map = getgenv().selectedMapDungeon or "CrystalCave"
+                local diff = getgenv().selectedDiffDungeon or "Easy"
+                
+                local w = 0
+                while not getPlayerGamemode() and getgenv().autoDungeonEnabled and w < 12 and not isGamemodeOnCooldown("Dungeon") do
+                    FireBridge("GamemodeSystem", "Create", "Dungeon", map:gsub("%s+", ""), diff)
+                    task.wait(0.5)
+                    FireBridge("GamemodeSystem", "Start", "Dungeon", player.UserId)
+                    task.wait(2)
+                    w = w + 2.5
+                end
+                
+                if not getPlayerGamemode() then
+                    if not isGamemodeOnCooldown("Dungeon") then
+                        getgenv().GamemodeCooldowns["Dungeon"] = tick() + 30 
+                        Notify("Timeout: Failed to enter Dungeon. Waiting 30s.", 3)
+                    end
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            else
+                while getPlayerGamemode() and getgenv().autoDungeonEnabled do task.wait(1) end
+                task.wait(5)
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                
+                local topTaskNow = getTopPriorityTask()
+                local isStillPriority = getgenv().enablePrioritySystem and (topTaskNow == "Auto Dungeon")
+                local isStillEnabled = (not getgenv().enablePrioritySystem) and getgenv().autoDungeonEnabled
+                if not (isStillPriority or isStillEnabled) then
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function autoRaidFunction()
+    while getgenv().autoRaidEnabled do
+        local topTask = getTopPriorityTask()
+        if getgenv().enablePrioritySystem and topTask and topTask ~= "Auto Raid" then task.wait(1) else
+            if not getPlayerGamemode() then
+                if isGamemodeOnCooldown("Raid") then task.wait(2) continue end
+                
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                local pMap = tostring(playerMap)
+                if pMap ~= "1" and pMap ~= "4" and pMap ~= "Easter 2026 Event" and pMap ~= "Lobby" then getgenv().lastFarmMap = pMap end
+                
+                if tostring(playerMap) ~= "1" then
+                    FireBridge("TeleportSystem", "To", 1)
+                    task.wait(4.5)
+                    pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                end
+                teleportToGamemodeNPC(1, {"raid"})
+                task.wait(1.5)
+                local map = getgenv().selectedMapRaid or "TitanTown"
+                local diff = getgenv().selectedDiffRaid or "Easy"
+                
+                local w = 0
+                while not getPlayerGamemode() and getgenv().autoRaidEnabled and w < 12 and not isGamemodeOnCooldown("Raid") do
+                    FireBridge("GamemodeSystem", "Create", "Raid", map:gsub("%s+", ""), diff)
+                    task.wait(0.5)
+                    FireBridge("GamemodeSystem", "Start", "Raid", player.UserId)
+                    task.wait(2)
+                    w = w + 2.5
+                end
+
+                if not getPlayerGamemode() then
+                    if not isGamemodeOnCooldown("Raid") then
+                        getgenv().GamemodeCooldowns["Raid"] = tick() + 30 
+                        Notify("Timeout: Failed to enter Raid. Waiting 30s.", 3)
+                    end
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            else
+                while getPlayerGamemode() and getgenv().autoRaidEnabled do task.wait(1) end
+                task.wait(5)
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                
+                local topTaskNow = getTopPriorityTask()
+                local isStillPriority = getgenv().enablePrioritySystem and (topTaskNow == "Auto Raid")
+                local isStillEnabled = (not getgenv().enablePrioritySystem) and getgenv().autoRaidEnabled
+                if not (isStillPriority or isStillEnabled) then
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function autoInfinityCastleFunction()
+    while getgenv().autoInfinityCastleEnabled do
+        local topTask = getTopPriorityTask()
+        if getgenv().enablePrioritySystem and topTask and topTask ~= "Auto Infinity Castle" then task.wait(1) else
+            if not getPlayerGamemode() then
+                if isGamemodeOnCooldown("Infinity Castle") then task.wait(2) continue end
+                
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                local pMap = tostring(playerMap)
+                if pMap ~= "1" and pMap ~= "4" and pMap ~= "Easter 2026 Event" and pMap ~= "Lobby" then getgenv().lastFarmMap = pMap end
+                
+                if tostring(playerMap) ~= "1" then
+                    FireBridge("TeleportSystem", "To", 1)
+                    task.wait(4.5)
+                    pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                end
+                teleportToGamemodeNPC(1, {"infinity", "castle"})
+                task.wait(1.5)
+                local act = getgenv().selectedInfinityCastleAct or "Act1"
+                
+                local w = 0
+                while not getPlayerGamemode() and getgenv().autoInfinityCastleEnabled and w < 12 and not isGamemodeOnCooldown("Infinity Castle") do
+                    FireBridge("GamemodeSystem", "Create", "Infinity Castle", act, "Easy")
+                    task.wait(0.5)
+                    FireBridge("GamemodeSystem", "Start", "Infinity Castle", player.UserId)
+                    task.wait(2)
+                    w = w + 2.5
+                end
+
+                if not getPlayerGamemode() then
+                    if not isGamemodeOnCooldown("Infinity Castle") then
+                        getgenv().GamemodeCooldowns["Infinity Castle"] = tick() + 30 
+                        Notify("Timeout: Failed to enter Infinity Castle. Waiting 30s.", 3)
+                    end
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            else
+                while getPlayerGamemode() and getgenv().autoInfinityCastleEnabled do task.wait(1) end
+                task.wait(5)
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                
+                local topTaskNow = getTopPriorityTask()
+                local isStillPriority = getgenv().enablePrioritySystem and (topTaskNow == "Auto Infinity Castle")
+                local isStillEnabled = (not getgenv().enablePrioritySystem) and getgenv().autoInfinityCastleEnabled
+                if not (isStillPriority or isStillEnabled) then
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function autoDefenseModeFunction()
+    while getgenv().autoDefenseModeEnabled do
+        local topTask = getTopPriorityTask()
+        if getgenv().enablePrioritySystem and topTask and topTask ~= "Auto Defense Mode" then task.wait(1) else
+            if not getPlayerGamemode() then
+                if isGamemodeOnCooldown("Defense Mode") then task.wait(2) continue end
+                
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                local pMap = tostring(playerMap)
+                if pMap ~= "1" and pMap ~= "4" and pMap ~= "Easter 2026 Event" and pMap ~= "Lobby" then getgenv().lastFarmMap = pMap end
+                
+                if tostring(playerMap) ~= "1" then
+                    FireBridge("TeleportSystem", "To", 1)
+                    task.wait(4.5)
+                    pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                end
+                teleportToGamemodeNPC(1, {"defense"})
+                task.wait(1.5)
+                
+                local w = 0
+                while not getPlayerGamemode() and getgenv().autoDefenseModeEnabled and w < 12 and not isGamemodeOnCooldown("Defense Mode") do
+                    FireBridge("GamemodeSystem", "Create", "Defense Mode", "BizarreDesert", "Easy")
+                    task.wait(0.5)
+                    FireBridge("GamemodeSystem", "Start", "Defense Mode", player.UserId)
+                    task.wait(2)
+                    w = w + 2.5
+                end
+
+                if not getPlayerGamemode() then
+                    if not isGamemodeOnCooldown("Defense Mode") then
+                        getgenv().GamemodeCooldowns["Defense Mode"] = tick() + 30 
+                        Notify("Timeout: Failed to enter Defense Mode. Waiting 30s.", 3)
+                    end
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            else
+                while getPlayerGamemode() and getgenv().autoDefenseModeEnabled do task.wait(1) end
+                task.wait(5)
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                
+                local topTaskNow = getTopPriorityTask()
+                local isStillPriority = getgenv().enablePrioritySystem and (topTaskNow == "Auto Defense Mode")
+                local isStillEnabled = (not getgenv().enablePrioritySystem) and getgenv().autoDefenseModeEnabled
+                if not (isStillPriority or isStillEnabled) then
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function autoEasterGamemodeFunction()
+    while getgenv().autoEasterEnabled do
+        local topTask = getTopPriorityTask()
+        if getgenv().enablePrioritySystem and topTask and topTask ~= "Auto Easter Event" then task.wait(1) else
+            if not getPlayerGamemode() then
+                if isGamemodeOnCooldown("Easter Raid") then task.wait(2) continue end
+                
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                local pMap = tostring(playerMap)
+                if pMap ~= "1" and pMap ~= "4" and pMap ~= "Easter 2026 Event" and pMap ~= "Lobby" then getgenv().lastFarmMap = pMap end
+                
+                if tostring(playerMap) ~= "Easter 2026 Event" then
+                    FireBridge("TeleportSystem", "To", "Easter 2026 Event")
+                    task.wait(4.5)
+                    pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                end
+                teleportToGamemodeNPC("Easter 2026 Event", {"easter levi", "levi", "easter"})
+                task.wait(1.5)
+                
+                local w = 0
+                while not getPlayerGamemode() and getgenv().autoEasterEnabled and w < 12 and not isGamemodeOnCooldown("Easter Raid") do
+                    FireBridge("GamemodeSystem", "Create", "Easter Raid", "ChocolateKingdom", "Easy")
+                    task.wait(0.5)
+                    FireBridge("GamemodeSystem", "Start", "Easter Raid", player.UserId)
+                    task.wait(2)
+                    w = w + 2.5
+                end
+
+                if not getPlayerGamemode() then
+                    if not isGamemodeOnCooldown("Easter Raid") then
+                        getgenv().GamemodeCooldowns["Easter Raid"] = tick() + 30 
+                        Notify("Timeout: Failed to enter Easter Raid. Waiting 30s.", 3)
+                    end
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            else
+                while getPlayerGamemode() and getgenv().autoEasterEnabled do task.wait(1) end
+                task.wait(5)
+                pcall(function() playerMap = tostring(ScriptLibrary.PlayerData.CurrentMap) end)
+                
+                local topTaskNow = getTopPriorityTask()
+                local isStillPriority = getgenv().enablePrioritySystem and (topTaskNow == "Auto Easter Event")
+                local isStillEnabled = (not getgenv().enablePrioritySystem) and getgenv().autoEasterEnabled
+                if not (isStillPriority or isStillEnabled) then
+                    local targetMap = getgenv().lastFarmMap
+                    if targetMap and getgenv().autoTeleportMonster and tostring(playerMap) ~= tostring(targetMap) then
+                        FireBridge("TeleportSystem", "To", tonumber(targetMap) or targetMap)
+                        task.wait(3.5)
+                    end
+                end
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while task.wait(0.1) and not Unloaded do
+        local isAutoModeActive = getgenv().autoDungeonEnabled or getgenv().autoRaidEnabled or getgenv().autoInfinityCastleEnabled or getgenv().autoDefenseModeEnabled or getgenv().autoEasterEnabled
+        if isAutoModeActive then
+            pcall(function()
+                local playerGamemode = getPlayerGamemode()
+                if playerGamemode then
+                    local enemyPart = getEnemyInGamemode(playerGamemode)
+                    if enemyPart then
+                        local char = player.Character
+                        local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                        if myRoot then
+                            myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                            myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                            local targetPos = enemyPart.Position
+                            local offsetPos = targetPos + Vector3.new(0, 4, 3)
+                            myRoot.CFrame = CFrame.new(offsetPos, Vector3.new(targetPos.X, offsetPos.Y, targetPos.Z))
+                        end
+                        local uid = enemyPart.Name
+                        FireBridge("ClickSystem", "Execute", tostring(uid))
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+Tabs.Priority:AddToggle("EnablePrioritySystem", { Title = "Enable Priority System", Default = false }):OnChanged(function(state) getgenv().enablePrioritySystem = state end)
+
+local priorityTasks = {"None", "Farm Monsters", "Auto Dungeon", "Auto Raid", "Auto Infinity Castle", "Auto Defense Mode", "Auto Easter Event"}
+Tabs.Priority:AddDropdown("Priority1", { Title = "Priority 1", Values = priorityTasks, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().priority1 = Value end)
+Tabs.Priority:AddDropdown("Priority2", { Title = "Priority 2", Values = priorityTasks, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().priority2 = Value end)
+Tabs.Priority:AddDropdown("Priority3", { Title = "Priority 3", Values = priorityTasks, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().priority3 = Value end)
+Tabs.Priority:AddDropdown("Priority4", { Title = "Priority 4", Values = priorityTasks, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().priority4 = Value end)
+Tabs.Priority:AddDropdown("Priority5", { Title = "Priority 5", Values = priorityTasks, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().priority5 = Value end)
+
+Tabs.Main:AddSection("Auto Quests")
+Tabs.Main:AddToggle("AutoQuestToggle", { Title = "Auto Quest", Default = false, Callback = function(value) getgenv().autoQuestEnabled = value if value then task.spawn(autoQuestFunction) end end })
+Tabs.Main:AddToggle("AutoClaimQuestToggle", { Title = "Auto Claim Quest", Default = false, Callback = function(value) getgenv().autoClaimQuestEnabled = value if value then task.spawn(autoClaimQuestFunction) end end })
+
+Tabs.Main:AddSection("Auto Attack")
+Tabs.Main:AddToggle("EnableAutoAttack", { Title = "Auto Attack", Default = false, Callback = function(value) getgenv().autoAttackEnabled = value end })
+
+Tabs.Main:AddSection("Farm")
+Tabs.Main:AddToggle("AutoFarmNearMob", {Title = "Auto Farm Near Mob", Default = false}):OnChanged(function(state)
+    getgenv().autoFarmNearMob = state
+    if state then
+        task.spawn(function()
+            while getgenv().autoFarmNearMob do
+                task.wait(0.1)
+                pcall(function()
+                    local playerGamemode = getPlayerGamemode()
+                    local enemyPart = nil
+                    
+                    if playerGamemode then
+                        enemyPart = getEnemyInGamemode(playerGamemode)
+                    else
+                        enemyPart = getEnemyInCurrentMap()
+                    end
+
+                    if enemyPart then
+                        local char = player.Character
+                        local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                        if myRoot then
+                            myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                            myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                            local targetPos = enemyPart.Position
+                            local offsetPos = targetPos + Vector3.new(0, 4, 3)
+                            myRoot.CFrame = CFrame.new(offsetPos, Vector3.new(targetPos.X, offsetPos.Y, targetPos.Z))
+                        end
+                        
+                        local uid = enemyPart.Name
+                        if not playerGamemode and enemyPart.Parent then
+                            uid = enemyPart.Parent.Name
+                        end
+                        FireBridge("ClickSystem", "Execute", tostring(uid))
+                    end
+                end)
+            end
+        end)
+    end
+end)
+
+local function getMonsterNames()
+    local namesList = {}
+    local duplicateChecker = {}
+    pcall(function()
+        local clientEnemies = workspace:FindFirstChild("_ENEMIES") and workspace._ENEMIES:FindFirstChild("Client")
+        if clientEnemies then
+            for _, uidFolder in pairs(clientEnemies:GetChildren()) do
+                local billboard = uidFolder:FindFirstChild("EnemyBillboard", true)
+                if billboard then
+                    local title = billboard:FindFirstChild("Title")
+                    if title and title:IsA("TextLabel") then
+                        local mName = title.Text:gsub("<[^>]+>", ""):match("^%s*(.-)%s*$")
+                        if mName and mName ~= "" and not duplicateChecker[mName] then
+                            duplicateChecker[mName] = true
+                            table.insert(namesList, mName)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if #namesList == 0 then table.insert(namesList, "No Monsters Found") else table.sort(namesList) end
+    return namesList
+end
+
+local selectedTargetMonsters = {}
+local MonsterDropdown = Tabs.Main:AddDropdown("MonsterDropdown", { Title = "Select Target Monsters", Values = getMonsterNames(), Multi = true, Default = {} })
+MonsterDropdown:OnChanged(function(Value) selectedTargetMonsters = Value end)
+Tabs.Main:AddButton({ Title = "Refresh Monster List", Callback = function() MonsterDropdown:SetValues(getMonsterNames()) end })
+
+Tabs.Main:AddToggle("AutoTeleportMonster", {Title = "Auto Teleport to Monster", Default = false }):OnChanged(function(state)
+    getgenv().autoTeleportMonster = state
+    if state then
+        task.spawn(function()
+            while getgenv().autoTeleportMonster do
+                task.wait(0.1)
+                
+                local hasSelection = false
+                if selectedTargetMonsters then
+                    for k, v in pairs(selectedTargetMonsters) do
+                        if v then hasSelection = true break end
+                    end
+                end
+                if not hasSelection then continue end
+
+                local playerGamemode = getPlayerGamemode()
+                local topTask = getTopPriorityTask()
+                
+                if getgenv().enablePrioritySystem then
+                    if topTask and topTask ~= "Farm Monsters" and not playerGamemode then
+                        task.wait(0.5)
+                        continue
+                    end
+                else
+                    local isTryingToEnterGamemode = (getgenv().autoDungeonEnabled or getgenv().autoRaidEnabled or getgenv().autoInfinityCastleEnabled or getgenv().autoDefenseModeEnabled or getgenv().autoEasterEnabled) and not playerGamemode
+                    if isTryingToEnterGamemode then
+                        task.wait(0.5)
+                        continue
+                    end
+                end
+                
+                local char = player.Character
+                local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                if not myRoot then continue end
+                
+                pcall(function()
+                    local clientEnemies = workspace:FindFirstChild("_ENEMIES") and workspace._ENEMIES:FindFirstChild("Client")
+                    local serverEnemies = workspace:FindFirstChild("_ENEMIES") and workspace._ENEMIES:FindFirstChild("Server")
+                    if clientEnemies and serverEnemies then
+                        local mapFolder = nil
+                        if playerGamemode then
+                            mapFolder = serverEnemies:FindFirstChild("Gamemode") and serverEnemies.Gamemode:FindFirstChild(playerGamemode.Name)
+                        else
+                            mapFolder = serverEnemies:FindFirstChild(tostring(playerMap))
+                        end
+                        
+                        if not mapFolder then 
+                            if not playerGamemode then
+                                local fallbackMap = getgenv().lastFarmMap or 2
+                                if tostring(playerMap) ~= tostring(fallbackMap) then
+                                    FireBridge("TeleportSystem", "To", tonumber(fallbackMap) or fallbackMap)
+                                    task.wait(3.5)
+                                end
+                            end
+                            return 
+                        end
+
+                        for _, uidFolder in pairs(clientEnemies:GetChildren()) do
+                            local billboard = uidFolder:FindFirstChild("EnemyBillboard", true)
+                            if billboard then
+                                local title = billboard:FindFirstChild("Title")
+                                if title and title:IsA("TextLabel") then
+                                    local mName = title.Text:gsub("<[^>]+>", ""):match("^%s*(.-)%s*$")
+                                    if selectedTargetMonsters[mName] then
+                                        local uid = uidFolder.Name
+                                        local serverPart = mapFolder:FindFirstChild(uid)
+                                        if serverPart and serverPart:IsA("BasePart") then
+                                            local hp = serverPart:GetAttribute("HP")
+                                            if hp and hp > 0 then
+                                                myRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                                myRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                                local targetPos = serverPart.Position
+                                                local offsetPos = targetPos + Vector3.new(0, 4, 3)
+                                                myRoot.CFrame = CFrame.new(offsetPos, Vector3.new(targetPos.X, offsetPos.Y, targetPos.Z))
+                                                return 
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+end)
+
+Tabs.GameMode:AddSection("Auto Dungeon")
+Tabs.GameMode:AddDropdown("DungeonMapSelect", { Title = "Select Map", Values = ValuesDungeon, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedMapDungeon = Value end)
+Tabs.GameMode:AddDropdown("DungeonDiffSelect", { Title = "Select Difficulty", Values = { "Easy", "Normal", "Hard" }, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedDiffDungeon = Value end)
+Tabs.GameMode:AddToggle("AutoDungeonToggle", { Title = "Auto Create & Do Dungeon", Default = false, Callback = function(value) getgenv().autoDungeonEnabled = value if value then task.spawn(autoDungeonFunction) end end })
+Tabs.GameMode:AddSlider("DungeonLeaveWave", { Title = "Wave X to", Default = 1, Min = 1, Max = 100, Rounding = 0, Callback = function(Value) getgenv().selectedWaveDungeon = Value end })
+Tabs.GameMode:AddToggle("AutoLeaveDungeon", { Title = "Leave in Wave X", Default = false, Callback = function(value) getgenv().autoLeaveDungeonWaveXEnabled = value if value then task.spawn(autoLeaveDungeonWaveFunction) end end })
+
+Tabs.GameMode:AddSection("Auto Raid")
+Tabs.GameMode:AddDropdown("RaidMapSelect", { Title = "Select Map", Values = ValuesRaid, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedMapRaid = Value end)
+Tabs.GameMode:AddDropdown("RaidDiffSelect", { Title = "Select Difficulty", Values = { "Easy", "Normal", "Hard" }, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedDiffRaid = Value end)
+Tabs.GameMode:AddToggle("AutoRaidToggle", { Title = "Auto Create & Do Raid", Default = false, Callback = function(value) getgenv().autoRaidEnabled = value if value then task.spawn(autoRaidFunction) end end })
+Tabs.GameMode:AddSlider("RaidLeaveWave", { Title = "Wave X to Leave", Default = 1, Min = 1, Max = 100, Rounding = 0, Callback = function(Value) getgenv().selectedWaveRaid = Value end })
+Tabs.GameMode:AddToggle("AutoLeaveRaid", { Title = "Leave in Wave X", Default = false, Callback = function(value) getgenv().autoLeaveRaidWaveXEnabled = value if value then task.spawn(autoLeaveRaidWaveFunction) end end })
+
+Tabs.GameMode:AddSection("Auto Infinity Castle")
+Tabs.GameMode:AddDropdown("InfinityCastleActSelect", { Title = "Select Act", Values = { "Act1", "Act2" }, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedInfinityCastleAct = Value end)
+Tabs.GameMode:AddToggle("AutoInfinityCastleToggle", { Title = "Auto Create & Do Infinity Castle", Default = false, Callback = function(value) getgenv().autoInfinityCastleEnabled = value if value then task.spawn(autoInfinityCastleFunction) end end })
+Tabs.GameMode:AddSlider("InfinityCastleLeaveWave", { Title = "Wave X to Leave", Default = 1, Min = 1, Max = 100, Rounding = 0, Callback = function(Value) getgenv().selectedWaveInfinityCastle = Value end })
+Tabs.GameMode:AddToggle("AutoLeaveInfinityCastle", { Title = "Leave in Wave X", Default = false, Callback = function(value) getgenv().autoLeaveInfinityCastleWaveXEnabled = value if value then task.spawn(autoLeaveInfinityCastleWaveFunction) end end })
+
+Tabs.GameMode:AddSection("Auto Defense Mode")
+Tabs.GameMode:AddToggle("AutoDefenseModeToggle", { Title = "Auto Create & Do Defense Mode", Default = false, Callback = function(value) getgenv().autoDefenseModeEnabled = value if value then task.spawn(autoDefenseModeFunction) end end })
+Tabs.GameMode:AddSlider("DefenseModeLeaveWave", { Title = "Wave X to Leave", Default = 1, Min = 1, Max = 100, Rounding = 0, Callback = function(Value) getgenv().selectedWaveDefenseMode = Value end })
+Tabs.GameMode:AddToggle("AutoLeaveDefenseMode", { Title = "Leave in Wave X", Default = false, Callback = function(value) getgenv().autoLeaveDefenseModeWaveXEnabled = value if value then task.spawn(autoLeaveDefenseModeWaveFunction) end end })
+
+getgenv().selectedsAlienUpgrades = {}
+getgenv().selectedsExchangesUpgrades = {}
+getgenv().selectedsDungeonUpgrades = {}
+getgenv().selectedsMonarchUpgrades = {}
+
+local function autoUpgradeShinigamiLevelingFunction()
+    while getgenv().autoUpgradeShinigamiLevelingEnabled do
+        FireBridge("UpgradeSystem", "Buy", "Shinigami Leveling", "Damage")
+        task.wait(1)
+    end
+end
+
+local function autoAlienUpgradeFunction()
+    while getgenv().autoAlienUpgradeEnabled do
+        if getgenv().selectedsAlienUpgrades then
+            for upgradeName, isSelected in pairs(getgenv().selectedsAlienUpgrades) do
+                if isSelected then
+                    FireBridge("UpgradeSystem", "Buy", "Alien", upgradeName)
+                    task.wait(0.2)
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+
+local function autoExchangesUpgradeFunction()
+    while getgenv().autoExchangesUpgradeEnabled do
+        if getgenv().selectedsExchangesUpgrades then
+            for upgradeName, isSelected in pairs(getgenv().selectedsExchangesUpgrades) do
+                if isSelected then
+                    FireBridge("UpgradeSystem", "Buy", "Exchange", upgradeName)
+                    task.wait(0.2)
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+
+local function autoDungeonUpgradeFunction()
+    while getgenv().autoDungeonUpgradeEnabled do
+        if getgenv().selectedsDungeonUpgrades then
+            for upgradeName, isSelected in pairs(getgenv().selectedsDungeonUpgrades) do
+                if isSelected then
+                    FireBridge("UpgradeSystem", "Buy", "Dungeon", upgradeName)
+                    task.wait(0.2)
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+
+local function autoMonarchUpgradeFunction()
+    while getgenv().autoMonarchUpgradeEnabled do
+        if getgenv().selectedsMonarchUpgrades then
+            for upgradeName, isSelected in pairs(getgenv().selectedsMonarchUpgrades) do
+                if isSelected then
+                    FireBridge("UpgradeSystem", "Buy", "Monarch", upgradeName)
+                    task.wait(0.2)
+                end
+            end
+        end
+        task.wait(1)
+    end
+end
+
+Tabs.Upgrade:AddSection("Shinigami Leveling")
+Tabs.Upgrade:AddToggle("AutoUpgradeShinigamiLeveling", { Title = "Auto Upgrade Shinigami Leveling", Default = false }):OnChanged(function(state) getgenv().autoUpgradeShinigamiLevelingEnabled = state if state then task.spawn(autoUpgradeShinigamiLevelingFunction) end end)
+
+Tabs.Upgrade:AddSection("Alien Upgrades")
+Tabs.Upgrade:AddDropdown("DropdownAlienUpgrades", { Title = "Select Alien Upgrades", Values = { "Energy", "Damage", "Ghost", "Enemy Range" }, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedsAlienUpgrades = Value end)
+Tabs.Upgrade:AddToggle("AutoUpgradeAlien", { Title = "Auto Upgrade Alien Upgrades", Default = false }):OnChanged(function(state) getgenv().autoAlienUpgradeEnabled = state if state then task.spawn(autoAlienUpgradeFunction) end end)
+
+Tabs.Upgrade:AddSection("Exchange Upgrades")
+Tabs.Upgrade:AddDropdown("DropdownExchangesUpgrades", { Title = "Select Exchanges Upgrades", Values = { "Energy", "Damage", "Ghost", "Enemy Range" }, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedsExchangesUpgrades = Value end)
+Tabs.Upgrade:AddToggle("AutoUpgradeExchanges", { Title = "Auto Upgrade Exchanges Upgrades", Default = false }):OnChanged(function(state) getgenv().autoExchangesUpgradeEnabled = state if state then task.spawn(autoExchangesUpgradeFunction) end end)
+
+Tabs.Upgrade:AddSection("Dungeon Upgrades")
+Tabs.Upgrade:AddDropdown("DropdownDungeonUpgrades", { Title = "Select Dungeon Upgrades", Values = { "Energy", "Damage", "Ghost", "CritDMG", "ModeDelay", "DungeonEnemyScale" }, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedsDungeonUpgrades = Value end)
+Tabs.Upgrade:AddToggle("AutoUpgradeDungeon", { Title = "Auto Upgrade Dungeon Upgrades", Default = false }):OnChanged(function(state) getgenv().autoDungeonUpgradeEnabled = state if state then task.spawn(autoDungeonUpgradeFunction) end end)
+
+Tabs.Upgrade:AddSection("Monarch Upgrades")
+Tabs.Upgrade:AddDropdown("DropdownMonarchUpgrades", { Title = "Select Monarch Upgrades", Values = { "Energy", "Damage", "CritChance", "CritDMG", "AtkSPD" }, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedsMonarchUpgrades = Value end)
+Tabs.Upgrade:AddToggle("AutoUpgradeMonarch", { Title = "Auto Upgrade Monarch Upgrades", Default = false }):OnChanged(function(state) getgenv().autoMonarchUpgradeEnabled = state if state then task.spawn(autoMonarchUpgradeFunction) end end)
+
+local GachaToggles = {}
+
+local function SetupGachaToggle(id, title, tokenName, mapDest, getTargetFunc, spinArgs)
+    GachaToggles[id] = Tabs.Gacha:AddToggle(id, { Title = title, Default = false })
+    GachaToggles[id]:OnChanged(function(value)
+        getgenv()[id] = value
+        if value then
+            task.spawn(function()
+                local teleported = false
+                while getgenv()[id] do
+                    if not teleported then
+                        if tostring(playerMap) ~= tostring(mapDest) then
+                            FireBridge("TeleportSystem", "To", tonumber(mapDest) or mapDest)
+                            task.wait(2.5)
+                        end
+                        pcall(function()
+                            local target = getTargetFunc()
+                            if typeof(target) == "CFrame" then
+                                if player.Character and player.Character.PrimaryPart then
+                                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                    player.Character:SetPrimaryPartCFrame(target * CFrame.new(0, 3, 0))
+                                    teleported = true
+                                end
+                            elseif target and player.Character and player.Character.PrimaryPart then
+                                player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                player.Character:SetPrimaryPartCFrame(GetGachaCFrame(target, 0, 0))
+                                teleported = true
+                            end
+                        end)
+                        task.wait(0.5)
+                    end
+                    
+                    FireBridge(table.unpack(spinArgs))
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end)
+end
+
+Tabs.Gacha:AddSection("Animation")
+Tabs.Gacha:AddToggle('enableDeleteSpinAnimation', { Title = 'Remove Spin Animation', Default = false, Callback = function(value) getgenv().removeSpinAnimationEnabled = value end })
+task.spawn(function()
+    while task.wait() and not Unloaded do
+        pcall(function()
+            if getgenv().removeSpinAnimationEnabled then
+                local GachaAnimation = player.PlayerGui:FindFirstChild("GachaAnimation")
+                if GachaAnimation then GachaAnimation.Enabled = false local root = GachaAnimation:FindFirstChild("Root") if root then root.Visible = false end end
+            end
+        end)
+        pcall(function() local StarterGachaAnimation = game:GetService("StarterGui"):FindFirstChild("GachaAnimation") if StarterGachaAnimation then StarterGachaAnimation:Destroy() end end)
+    end
+end)
+
+local function checkMatch(current, targets)
+    if not current or not targets then return false end
+    local currStr = tostring(current):lower():gsub("[%s%p]", "")
+    for k, v in pairs(targets) do
+        if v then
+            local targetStr = tostring(k):lower():gsub("[%s%p]", "")
+            if currStr == targetStr or string.find(currStr, targetStr) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function findGachaNPC(mapId, keywords)
+    local interactions = workspace._MAP:FindFirstChild(tostring(mapId))
+    if interactions then interactions = interactions:FindFirstChild("Interactions") end
+    if not interactions then return nil end
+
+    for _, v in ipairs(interactions:GetChildren()) do
+        local attrName = tostring(v:GetAttribute("Name") or ""):lower()
+        local attrId = tostring(v:GetAttribute("Id") or ""):lower()
+        local modelName = tostring(v.Name):lower()
+
+        for _, kw in ipairs(keywords) do
+            local lowerKw = kw:lower()
+            if string.find(attrName, lowerKw) or string.find(attrId, lowerKw) or string.find(modelName, lowerKw) then
+                return v:FindFirstChild("Rig") or v:FindFirstChild("Range") or v
+            end
+        end
+    end
+    return nil
+end
+
+Tabs.Gacha:AddSection("Auto Passive Unit")
+
+local pList, pDict, wList, wDict = getUnitsAndSwords()
+
+local UnitPassiveDropdown = Tabs.Gacha:AddDropdown("UnitPassiveDropdown", { Title = "Select Unit", Values = pList, Multi = false, Default = 1 })
+UnitPassiveDropdown:OnChanged(function(Value) getgenv().selectedUnitForPassive = pDict[Value] end)
+
+local PassiveTraitDropdown = Tabs.Gacha:AddDropdown("PassiveTraitDropdown", { Title = "Select Target Passives", Values = NormalPassiveList, Multi = true, Default = {} })
+PassiveTraitDropdown:OnChanged(function(Value) getgenv().selectedTargetPassives = Value end)
+
+local AutoPassiveUnitToggleObj = Tabs.Gacha:AddToggle("AutoPassiveUnitToggle", { Title = "Auto Roll Passive", Default = false })
+
+local function autoPassiveUnitFunction()
+    local teleported = false
+    while getgenv().autoPassiveUnitEnabled do
+        local petId = getgenv().selectedUnitForPassive
+        local targetPassives = getgenv().selectedTargetPassives
+        
+        if not petId or not targetPassives then
+            getgenv().autoPassiveUnitEnabled = false
+            AutoPassiveUnitToggleObj:SetValue(false)
+            break
+        end
+        
+        local isDone = false
+        pcall(function()
+            local pet = ScriptLibrary.PlayerData.Pets[petId]
+            if pet then
+                local currentBuff = (pet.Buffs and pet.Buffs.Passive) or pet.Passive or pet.Trait or ""
+                if currentBuff ~= "" and checkMatch(currentBuff, targetPassives) then
+                    isDone = true
+                end
+            end
+        end)
+        
+        if isDone then
+            getgenv().autoPassiveUnitEnabled = false
+            AutoPassiveUnitToggleObj:SetValue(false)
+            break
+        end
+        
+        if tostring(playerMap) ~= "Lobby" then
+            FireBridge("TeleportSystem", "To", "Lobby")
+            task.wait(2.5)
+            teleported = false
+        end
+
+        if not teleported then
+            pcall(function()
+                local target = findGachaNPC("Lobby", {"passive"})
+                if target and player.Character and player.Character.PrimaryPart then
+                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    player.Character:SetPrimaryPartCFrame(GetGachaCFrame(target, 0, 0)) 
+                    teleported = true
+                end
+            end)
+            task.wait(0.5)
+        end
+        
+        FireBridge("GachaSystem", "Spin", "Passive", "Normal", {}, petId)
+        task.wait(0.1)
+    end
+end
+
+AutoPassiveUnitToggleObj:OnChanged(function(state)
+    getgenv().autoPassiveUnitEnabled = state
+    if state then task.spawn(autoPassiveUnitFunction) end
+end)
+
+Tabs.Gacha:AddSection("Auto Enchant Sword")
+
+local SwordEnchantDropdown = Tabs.Gacha:AddDropdown("SwordEnchantDropdown", { Title = "Select Sword", Values = wList, Multi = false, Default = 1 })
+SwordEnchantDropdown:OnChanged(function(Value) getgenv().selectedSwordForEnchant = wDict[Value] end)
+
+local TargetEnchantDropdown = Tabs.Gacha:AddDropdown("TargetEnchantDropdown", { Title = "Select Target Enchants", Values = EnchantmentList, Multi = true, Default = {} })
+TargetEnchantDropdown:OnChanged(function(Value) getgenv().selectedTargetEnchants = Value end)
+
+local AutoEnchantSwordToggleObj = Tabs.Gacha:AddToggle("AutoEnchantSwordToggle", { Title = "Auto Roll Enchant", Default = false })
+
+local function autoEnchantSwordFunction()
+    local teleported = false
+    while getgenv().autoEnchantSwordEnabled do
+        local swordId = getgenv().selectedSwordForEnchant
+        local targetEnchants = getgenv().selectedTargetEnchants
+        
+        if not swordId or not targetEnchants then
+            getgenv().autoEnchantSwordEnabled = false
+            AutoEnchantSwordToggleObj:SetValue(false)
+            break
+        end
+        
+        local isDone = false
+        pcall(function()
+            local Lib = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Library"))
+            local weapon = Lib.PlayerData.Weapons[swordId]
+            if weapon and weapon.Buffs and weapon.Buffs.Enchantment then
+                if checkMatch(weapon.Buffs.Enchantment, targetEnchants) then
+                    isDone = true
+                end
+            end
+        end)
+        
+        if isDone then
+            getgenv().autoEnchantSwordEnabled = false
+            AutoEnchantSwordToggleObj:SetValue(false)
+            break
+        end
+        
+        if tostring(playerMap) ~= "Lobby" then
+            FireBridge("TeleportSystem", "To", "Lobby")
+            task.wait(2.5)
+            teleported = false
+        end
+
+        if not teleported then
+            pcall(function()
+                local target = findGachaNPC("Lobby", {"enchant"})
+                if target and player.Character and player.Character.PrimaryPart then
+                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    player.Character:SetPrimaryPartCFrame(GetGachaCFrame(target, 0, 0)) 
+                    teleported = true
+                end
+            end)
+            task.wait(0.5)
+        end
+        
+        FireBridge("GachaSystem", "Spin", "Enchantment", "Normal", {}, swordId)
+        task.wait(0.1)
+    end
+end
+
+AutoEnchantSwordToggleObj:OnChanged(function(state)
+    getgenv().autoEnchantSwordEnabled = state
+    if state then task.spawn(autoEnchantSwordFunction) end
+end)
+
+Tabs.Gacha:AddButton({ Title = "Refresh Units & Swords", Callback = function()
+    local newPList, newPDict, newWList, newWDict = getUnitsAndSwords()
+    pDict, wDict = newPDict, newWDict
+    UnitPassiveDropdown:SetValues(pList)
+    SwordEnchantDropdown:SetValues(wList)
+end})
+
+Tabs.Gacha:AddSection("Egg Rolls")
+local ValuesEgg = {}
+local EggValues = {}
+local mapIndex = 1
+pcall(function() for _, v in pairs(mapData) do if v.Name and v.EggName then table.insert(ValuesEgg, v.Name) EggValues[v.Name] = { EggName = v.EggName, MapNumber = tostring(mapIndex) } mapIndex += 1 end end end)
+Tabs.Gacha:AddDropdown("DropdownPlaceSelect", { Title = "Select Place", Values = {"1", "2"}, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedPlace = Value end)
+Tabs.Gacha:AddDropdown("DropdownEggSelect", { Title = "Select Egg", Values = ValuesEgg, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedEgg = EggValues[Value] end)
+if #ValuesEgg > 0 then getgenv().selectedEgg = EggValues[ValuesEgg[1]] end
+
+local AutoRollEggToggle = Tabs.Gacha:AddToggle("AutoRollEgg", {Title = "Auto Roll Egg", Default = false})
+AutoRollEggToggle:OnChanged(function(state)
+    getgenv().autoRollEggEnabled = state
+    if state then
+        task.spawn(function()
+            local teleported = false
+            local lastEggMap = nil
+            while getgenv().autoRollEggEnabled do
+                local eggData = getgenv().selectedEgg
+                if eggData then
+                    if lastEggMap ~= eggData.MapNumber then
+                        teleported = false
+                        lastEggMap = eggData.MapNumber
+                    end
+
+                    if tostring(playerMap) ~= tostring(eggData.MapNumber) then
+                        FireBridge("TeleportSystem", "To", tonumber(eggData.MapNumber) or eggData.MapNumber)
+                        task.wait(2.5)
+                        teleported = false
+                    end
+
+                    if not teleported then
+                        pcall(function()
+                            local mapFolder = workspace._MAP:FindFirstChild(eggData.MapNumber)
+                            if mapFolder then
+                                local eggs = mapFolder:FindFirstChild("Eggs")
+                                if eggs then
+                                    local egg = (getgenv().selectedPlace == "1" and eggs:GetChildren()[2]) or eggs:FindFirstChild(eggData.EggName)
+                                    if not egg and #eggs:GetChildren() > 0 then egg = eggs:GetChildren()[1] end
+                                    if egg and player.Character and player.Character.PrimaryPart then
+                                        player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                        player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                        player.Character:SetPrimaryPartCFrame(egg:GetPivot() * CFrame.new(0, 5, 0))
+                                        teleported = true
+                                    end
+                                end
+                            end
+                        end)
+                        task.wait(0.5)
+                    end
+                    FireBridge("PetSystem", "Open", eggData.EggName, "Twenty")
+                end
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+Tabs.Gacha:AddSection("Banner Rolls")
+
+SetupGachaToggle("autoRollAvatarEnabled", "Auto Roll Avatar", "AvatarTokens", "Lobby", function()
+    return CFrame.new(-2976.52637, 782.177124, -1520.30457, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+end, {"GachaSystem", "Spin", "Avatar", "Classic", UnifiedFilters})
+
+SetupGachaToggle("autoRollMountEnabled", "Auto Roll Mount", "MountTokens", "Lobby", function()
+    return CFrame.new(-3295.08008, 780.622681, -1497.26697, 0.930014133, -1.11259659e-08, 0.36752373, 2.72905094e-08, 1, -3.87855081e-08, -0.36752373, 4.61009826e-08, 0.930014133)
+end, {"GachaSystem", "Spin", "Mount", "Gacha Luck", UnifiedFilters})
+
+SetupGachaToggle("autoRollSwordEnabled", "Auto Roll Sword", "WeaponTokens", "Lobby", function()
+    return CFrame.new(-2977.71875, 784.236572, -1881.85779, -1, 0, 0, 0, 1, 0, 0, 0, -1)
+end, {"GachaSystem", "Spin", "Weapon", "Blood-Red", UnifiedFilters})
+
+SetupGachaToggle("autoRollTraitEnabled", "Auto Roll Trait", "TraitShards", "Lobby", function()
+    return CFrame.new(-3294.2793, 780.615112, -1905.12769, -1, 0, 0, 0, 1, 0, 0, 0, -1)
+end, {"GachaSystem", "Spin", "Trait", "Normal", {}})
+
+SetupGachaToggle("autoRollWarriorsEnabled", "Auto Roll Warriors", "TitanTokens", 1, function()
+    return CFrame.new(3943.0022, 768.14917, -7765.06348, 0.990259945, -1.04036673e-07, 0.139230937, 9.7960914e-08, 1, 5.04909607e-08, -0.139230937, -3.63599852e-08, 0.990259945)
+end, {"GachaSystem", "Spin", "Warrior", "Titan", UnifiedFilters})
+
+SetupGachaToggle("autoRollBloodlineEnabled", "Auto Roll Bloodlines", "BloodlineTokens", 1, function()
+    return CFrame.new(4396.3418, 724.33667, -7802.57422, -0.819775462, -4.31855085e-09, -0.572685063, -4.77366868e-10, 1, -6.85755097e-09, 0.572685063, -5.34827116e-09, -0.819775462)
+end, {"GachaSystem", "Spin", "Bloodline", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollTitaSerumEnabled", "Auto Roll Tita Serum", "SerumTokens", 1, function()
+    return CFrame.new(3869.39697, 768.26062, -7644.26221, 0.989245236, 7.06721855e-15, -0.146266282, -6.54757654e-15, 1, 4.0341473e-15, 0.146266282, -3.03307146e-15, 0.989245236)
+end, {"GachaSystem", "Spin", "Titan Serum", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollPossesionsEnabled", "Auto Roll Possesions", "PossessionTokens", 2, function()
+    return CFrame.new(4105.21826, 758.991516, -923.876709, 0.939621747, -6.36962625e-08, 0.342214793, 7.80223672e-08, 1, -2.80971229e-08, -0.342214793, 5.31010755e-08, 0.939621747)
+end, {"GachaSystem", "Spin", "Possession", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollPsychicPowersEnabled", "Auto Roll Psychic Powers", "PsychicTokens", 2, function()
+    return CFrame.new(4060.97144, 759.368042, -1006.22278, 0.646250248, -2.98144869e-08, 0.763125598, -5.72763241e-08, 1, 8.757317e-08, -0.763125598, -1.00303211e-07, 0.646250248)
+end, {"GachaSystem", "Spin", "Psychic Power", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollSoulFoundationEnabled", "Auto Roll Soul Foundation", "SoulTokens", 3, function()
+    return CFrame.new(4648.22949, 736.671814, 3317.66602, -0.635650754, 6.67874997e-16, 0.771976769, 3.08285603e-15, 1, 1.67329485e-15, -0.771976769, 3.44352436e-15, -0.635650754)
+end, {"GachaSystem", "Spin", "Soul Fundation", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollZanpakutoEnabled", "Auto Roll Zanpakuto", "ZanpakutoTokens", 3, function()
+    return CFrame.new(4360.45605, 798.158813, 3549.1665, -0.853950381, -1.05264287e-30, -0.520354509, 2.75473352e-23, 1, -4.52077536e-23, 0.520354509, -5.2939556e-23, -0.853950381)
+end, {"GachaSystem", "Spin", "Zanpakuto", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollPowerOfThePlanetsEnabled", "Auto Roll Power of Planets", "ExchangeTokens", 3, function()
+    return CFrame.new(4321.21289, 736.671753, 3349.37427, 0.956355929, -1.47654458e-10, -0.29220435, 3.84101834e-10, 1, 7.51814944e-10, 0.29220435, -8.31238911e-10, 0.956355929)
+end, {"GachaSystem", "Spin", "Power of the Planet", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollHunterRanksEnabled", "Auto Roll Hunter Ranks", "HunterTokens", 4, function()
+    return CFrame.new(4261.83105, 699.844543, 8737.17285, 0.254065365, 7.78682363e-08, 0.967187047, -7.62879804e-09, 1, -7.85060337e-08, -0.967187047, 1.25671908e-08, 0.254065365)
+end, {"GachaSystem", "Spin", "Hunter Rank", "Normal", UnifiedFilters})
+
+SetupGachaToggle("autoRollShadowEnabled", "Auto Roll Shadow", "ShadowTokens", 4, function()
+    return CFrame.new(4292.71289, 695.716553, 8256.75586, -0.8600263, -1.7399584e-08, 0.510249674, -4.69300732e-09, 1, 2.6190067e-08, -0.510249674, 2.01295407e-08, -0.8600263)
+end, {"GachaSystem", "Spin", "Warrior", "Shadow", UnifiedFilters})
+
+Tabs.Event:AddSection("Auto Event Gamemode")
+Tabs.Event:AddToggle("AutoEasterToggle", { Title = "Auto Create & Do Easter Event", Default = false, Callback = function(value) getgenv().autoEasterEnabled = value if value then task.spawn(autoEasterGamemodeFunction) end end })
+Tabs.Event:AddSlider("EasterLeaveWave", { Title = "Wave X to Leave", Default = 1, Min = 1, Max = 100, Rounding = 0, Callback = function(Value) getgenv().selectedWaveEaster = Value end })
+Tabs.Event:AddToggle("AutoLeaveEaster", { Title = "Leave in Wave X", Default = false, Callback = function(value) getgenv().autoLeaveEasterWaveXEnabled = value if value then task.spawn(autoLeaveEasterWaveFunction) end end })
+
+Tabs.Event:AddSection("Event Pet Rolls")
+
+Tabs.Event:AddDropdown("EventEggPlaceSelect", { Title = "Select Egg Place", Values = {"1", "2"}, Multi = false, Default = 1 }):OnChanged(function(Value) getgenv().selectedEventEggPlace = Value end)
+
+local AutoRollEventEggToggle = Tabs.Event:AddToggle("AutoRollEventEgg", {Title = "Auto Roll Event Egg", Default = false})
+AutoRollEventEggToggle:OnChanged(function(state)
+    getgenv().autoRollEventEggEnabled = state
+    if state then
+        task.spawn(function()
+            local teleported = false
+            local currentEggName = "Easter 2026 Scroll" 
+            
+            while getgenv().autoRollEventEggEnabled do
+                if tostring(playerMap) ~= "Easter 2026 Event" then
+                    FireBridge("TeleportSystem", "To", "Easter 2026 Event")
+                    task.wait(2.5)
+                    teleported = false
+                end
+
+                if not teleported then
+                    pcall(function()
+                        local mapFolder = workspace._MAP:FindFirstChild("Easter 2026 Event")
+                        if mapFolder then
+                            local eggs = mapFolder:FindFirstChild("Eggs")
+                            if eggs then
+                                local egg
+                                
+                                if getgenv().selectedEventEggPlace == "2" then
+                                    egg = eggs:GetChildren()[2] 
+                                else
+                                    egg = eggs:FindFirstChild("Easter 2026 Scroll") or eggs:GetChildren()[1] 
+                                end
+
+                                if egg and player.Character and player.Character.PrimaryPart then
+                                    currentEggName = egg.Name 
+                                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                    player.Character:SetPrimaryPartCFrame(egg:GetPivot() * CFrame.new(0, 5, 0))
+                                    teleported = true
+                                end
+                            end
+                        end
+                    end)
+                    task.wait(0.5)
+                end
+                
+                FireBridge("PetSystem", "Open", currentEggName, "Twenty")
+                task.wait(0.1)
+            end
+        end)
+    end
+end)
+
+Tabs.Event:AddSection("Event Passive Gacha")
+
+local EventPetDropdown = Tabs.Event:AddDropdown("EventPetDropdown", { Title = "Select Pet", Values = pList, Multi = false, Default = 1 })
+EventPetDropdown:OnChanged(function(Value) getgenv().selectedEventPetId = pDict[Value] end)
+
+Tabs.Event:AddDropdown("EventTraitDropdown", { Title = "Target Trait", Values = EasterPassiveList, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedEventTargetTrait = Value end)
+
+local EventGachaToggleObj = Tabs.Event:AddToggle("AutoEventGacha", { Title = "Auto Roll Event Passive", Default = false })
+
+local function autoEventGachaFunction()
+    local teleported = false
+    while getgenv().autoEventGacha do
+        local petId = getgenv().selectedEventPetId
+        local targetTraits = getgenv().selectedEventTargetTrait
+        
+        if not petId or not targetTraits then
+            getgenv().autoEventGacha = false
+            EventGachaToggleObj:SetValue(false)
+            break
+        end
+        
+        local isDone = false
+        pcall(function()
+            local pet = ScriptLibrary.PlayerData.Pets[petId]
+            if pet then
+                local currentBuff = (pet.Buffs and pet.Buffs["Easter Passive"]) or pet["Easter Passive"] or (pet.Buffs and pet.Buffs.Passive) or pet.Passive or ""
+                if currentBuff ~= "" and checkMatch(currentBuff, targetTraits) then
+                    isDone = true
+                end
+            end
+        end)
+        
+        if isDone then
+            getgenv().autoEventGacha = false
+            EventGachaToggleObj:SetValue(false)
+            break
+        end
+        
+        if tostring(playerMap) ~= "Easter 2026 Event" then
+            FireBridge("TeleportSystem", "To", "Easter 2026 Event")
+            task.wait(2.5)
+            teleported = false
+        end
+
+        if not teleported then
+            pcall(function()
+                local target = CFrame.new(-3044.2876, 784.042053, 7556.56934, -0.99653995, -3.33698189e-08, -0.0831148028, -4.16724291e-08, 1, 9.8158516e-08, 0.0831148028, 1.01282481e-07, -0.99653995)
+                if player.Character and player.Character.PrimaryPart then
+                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    player.Character:SetPrimaryPartCFrame(target)
+                    teleported = true
+                end
+            end)
+            task.wait(0.5)
+        end
+        
+        FireBridge("GachaSystem", "Spin", "Easter Passive", "Normal", {}, petId)
+        task.wait(0.1)
+    end
+end
+
+EventGachaToggleObj:OnChanged(function(state)
+    getgenv().autoEventGacha = state
+    if state then task.spawn(autoEventGachaFunction) end
+end)
+
+Tabs.Event:AddSection("Event Enchant Gacha")
+
+local EventSwordDropdown = Tabs.Event:AddDropdown("EventSwordDropdown", { Title = "Select Sword", Values = wList, Multi = false, Default = 1 })
+EventSwordDropdown:OnChanged(function(Value) getgenv().selectedEventSwordId = wDict[Value] end)
+
+Tabs.Event:AddDropdown("EventEnchantDropdown", { Title = "Target Event Enchant", Values = EasterEnchantmentList, Multi = true, Default = {} }):OnChanged(function(Value) getgenv().selectedEventTargetEnchant = Value end)
+
+local EventEnchantToggleObj = Tabs.Event:AddToggle("AutoEventEnchant", { Title = "Auto Roll Event Enchant", Default = false })
+
+local function autoEventEnchantFunction()
+    local teleported = false
+    while getgenv().autoEventEnchant do
+        local swordId = getgenv().selectedEventSwordId
+        local targetEnchants = getgenv().selectedEventTargetEnchant
+        
+        if not swordId or not targetEnchants then
+            getgenv().autoEventEnchant = false
+            EventEnchantToggleObj:SetValue(false)
+            break
+        end
+        
+        local isDone = false
+        pcall(function()
+            local weapon = ScriptLibrary.PlayerData.Weapons[swordId]
+            if weapon then
+                local currentBuff = (weapon.Buffs and weapon.Buffs["Easter Enchantment"]) or weapon["Easter Enchantment"] or (weapon.Buffs and weapon.Buffs.Enchantment) or weapon.Enchantment or ""
+                if currentBuff ~= "" and checkMatch(currentBuff, targetEnchants) then
+                    isDone = true
+                end
+            end
+        end)
+        
+        if isDone then
+            getgenv().autoEventEnchant = false
+            EventEnchantToggleObj:SetValue(false)
+            break
+        end
+        
+        if tostring(playerMap) ~= "Easter 2026 Event" then
+            FireBridge("TeleportSystem", "To", "Easter 2026 Event")
+            task.wait(2.5)
+            teleported = false
+        end
+
+        if not teleported then
+            pcall(function()
+                local target = CFrame.new(-3032.24194, 784.042053, 7470.96143, 0.926582754, -4.68956429e-08, -0.376090974, 2.80370269e-08, 1, -5.56169084e-08, 0.376090974, 4.0989196e-08, 0.926582754)
+                if player.Character and player.Character.PrimaryPart then
+                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    player.Character:SetPrimaryPartCFrame(target)
+                    teleported = true
+                end
+            end)
+            task.wait(0.5)
+        end
+        
+        FireBridge("GachaSystem", "Spin", "Easter Enchantment", "Normal", {}, swordId)
+        task.wait(0.1) 
+    end
+end
+
+EventEnchantToggleObj:OnChanged(function(state)
+    getgenv().autoEventEnchant = state
+    if state then task.spawn(autoEventEnchantFunction) end
+end)
+
+Tabs.Event:AddButton({ Title = "Refresh Pets & Swords", Callback = function() 
+    local newPList, newPDict, newWList, newWDict = getUnitsAndSwords()
+    pDict = newPDict
+    wDict = newWDict
+    EventPetDropdown:SetValues(newPList)
+    if EventSwordDropdown then EventSwordDropdown:SetValues(newWList) end
+end})
+
+Tabs.Event:AddSection("Easter Traits")
+
+local AutoEasterTraitToggle = Tabs.Event:AddToggle("AutoEasterTrait", { Title = "Auto Roll Easter Trait", Default = false })
+
+local function autoEasterTraitFunction()
+    local teleported = false
+    while getgenv().autoEasterTraitEnabled do
+        if tostring(playerMap) ~= "Easter 2026 Event" then
+            FireBridge("TeleportSystem", "To", "Easter 2026 Event")
+            task.wait(2.5)
+            teleported = false
+        end
+
+        if not teleported then
+            pcall(function()
+                local target = CFrame.new(-2990.05591, 784.042053, 7510.41455, 0.160417035, -2.75311907e-09, -0.987049341, -9.13732663e-08, 1, -1.76393886e-08, 0.987049341, 9.30195796e-08, 0.160417035)
+                if player.Character and player.Character.PrimaryPart then
+                    player.Character.PrimaryPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    player.Character.PrimaryPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    player.Character:SetPrimaryPartCFrame(target)
+                    teleported = true
+                end
+            end)
+            task.wait(0.5)
+        end
+        
+        FireBridge("GachaSystem", "Spin", "Easter Trait", "Normal", {})
+        task.wait(0.1)
+    end
+end
+
+AutoEasterTraitToggle:OnChanged(function(state)
+    getgenv().autoEasterTraitEnabled = state
+    if state then task.spawn(autoEasterTraitFunction) end
+end)
+
+getgenv().equipBestInterval = 1
+
+Tabs.Misc:AddSection("Auto Equip Best")
+Tabs.Misc:AddSlider("EquipBestInterval", { Title = "Equip Best Interval (Minutes)", Default = 1, Min = 0, Max = 60, Rounding = 0, Callback = function(Value) getgenv().equipBestInterval = Value end })
+Tabs.Misc:AddToggle("AutoEquipBestUnit", { Title = "Equip Best Unit", Default = false }):OnChanged(function(state) getgenv().equipBestEnabled = state if state then task.spawn(function() while getgenv().equipBestEnabled do FireBridge("PetSystem", "EquipBest") task.wait((getgenv().equipBestInterval or 1) * 60) end end) end end)
+Tabs.Misc:AddToggle("AutoEquipBestWarrior", { Title = "Equip Best Warrior", Default = false }):OnChanged(function(state) getgenv().equipBestWarriorEnabled = state if state then task.spawn(function() while getgenv().equipBestWarriorEnabled do FireBridge("WarriorSystem", "EquipBest") task.wait((getgenv().equipBestInterval or 1) * 60) end end) end end)
+Tabs.Misc:AddToggle("AutoEquipBestAvatar", { Title = "Equip Best Avatar", Default = false }):OnChanged(function(state) getgenv().equipBestAvatarEnabled = state if state then task.spawn(function() while getgenv().equipBestAvatarEnabled do pcall(function() local PlayerAvatars = ScriptLibrary.PlayerData and ScriptLibrary.PlayerData.Avatars or {} local bestName, bestLevel, bestXP = nil, -1, -1 for name, data in pairs(PlayerAvatars) do local level = data.Level or 0 local xp = data.XP or 0 if level > bestLevel or (level == bestLevel and xp > bestXP) then bestName = name; bestLevel = level; bestXP = xp end end if bestName and not PlayerAvatars[bestName].Equipped then FireBridge("AvatarSystem", "Equip", tostring(bestName)) end end) task.wait((getgenv().equipBestInterval or 1) * 60) end end) end end)
+Tabs.Misc:AddToggle("AutoEquipBestSword", { Title = "Equip Best Sword", Default = false }):OnChanged(function(state) getgenv().equipBestSwordEnabled = state if state then task.spawn(function() while getgenv().equipBestSwordEnabled do FireBridge("WeaponSystem", "EquipBest") task.wait((getgenv().equipBestInterval or 1) * 60) end end) end end)
+
+Tabs.Misc:AddSection("Auto Rewards & Achievements")
+Tabs.Misc:AddToggle("AutoDailyRewards", { Title = "Auto Get Daily Rewards", Default = false }):OnChanged(function(state) getgenv().autoGetDailyRewardsEnabled = state if state then task.spawn(function() while getgenv().autoGetDailyRewardsEnabled do for i = 1, 7 do FireBridge("WeeklyRewardSystem", "Claim", "Gems", i) end task.wait(120) end end) end end)
+Tabs.Misc:AddToggle("AutoTimeRewards", { Title = "Auto Get Time Rewards", Default = false }):OnChanged(function(state) getgenv().autoGetTimeRewardsEnabled = state if state then task.spawn(function() while getgenv().autoGetTimeRewardsEnabled do for i = 1, 9 do FireBridge("TimeRewardSystem", "Claim", "General", i) end FireBridge("TimeRewardSystem", "Reset", "General") task.wait(120) end end) end end)
+Tabs.Misc:AddToggle("AutoGetAchievement", { Title = "Auto Get Achievement", Default = false }):OnChanged(function(state) getgenv().autoGetAchievementsEnabled = state if state then task.spawn(function() while getgenv().autoGetAchievementsEnabled do pcall(function() local module = require(ReplicatedStorage.Framework.Modules.Data.AchievementData) local achievements = {} local function dump(tbl, path) path = path or "" for k, v in pairs(tbl) do local newPath = path .. tostring(k) if type(v) == "table" then dump(v, newPath .. ".") else if k == "Name" then local result = path:match("([^%.]+)%.Name$") or path:match("([^%.]+)%.$") if result then table.insert(achievements, result) end end end end end dump(module) for _, achievement in ipairs(achievements) do FireBridge("AchievementSystem", "Claim", tostring(achievement)) task.wait(0.5) end end) task.wait(5) end end) end end)
+
+Tabs.Misc:AddSection("Auto Rebirth")
+Tabs.Misc:AddToggle("AutoRebirth", { Title = "Auto Rebirth", Default = false }):OnChanged(function(state) getgenv().autoRebirthEnabled = state if state then task.spawn(function() while getgenv().autoRebirthEnabled do pcall(function() if ScriptLibrary and ScriptLibrary.PlayerData then local PlayerData = ScriptLibrary.PlayerData local rebirthData = require(ReplicatedStorage.Framework.Modules.Data.RebirthData.Ascension) local currentLevel = PlayerData.Rebirth and PlayerData.Rebirth.Ascension_Normal or 0 local nextLevel = currentLevel + 1 local levelData = rebirthData.Types.Normal.Levels[nextLevel] if levelData then local price = levelData.Price local playerMoney = PlayerData.Ghost or 0 if playerMoney >= price then FireBridge("RebirthSystem", "Release", "Ascension", "Normal") end end end end) task.wait(1) end end) end end)
+
+Tabs.Misc:AddSection("Utilities")
+Tabs.Misc:AddToggle("RemoveNotify", { Title = "Remove Notify", Default = false }):OnChanged(function(state) getgenv().removeNotifyEnabled = state task.spawn(function() while getgenv().removeNotifyEnabled do pcall(function() local notification = player.PlayerGui:FindFirstChild("Notification") if notification then notification.Enabled = false end end) task.wait(0.5) end end) end)
+Tabs.Misc:AddButton({ Title = "Copy Position", Callback = function() local char = player.Character local myRoot = char and char:FindFirstChild("HumanoidRootPart") if myRoot then setclipboard(tostring(myRoot.CFrame)) end end })
+Tabs.Misc:AddButton({ Title = "Fix Blurry Screen", Callback = function() pcall(function() for _, effect in pairs(Lighting:GetChildren()) do if effect:IsA("BlurEffect") or effect:IsA("DepthOfFieldEffect") then effect:Destroy() end end end) end })
+
+Tabs.Settings:AddSection("Menu Controls")
+
+Tabs.Settings:AddButton({ 
+    Title = "Unload Script", 
+    Callback = function() 
+        Unloaded = true 
+        for _, cb in ipairs(UnloadCallbacks) do pcall(cb) end 
+        Fluent:Destroy() 
+    end 
+})
+
+Tabs.Settings:AddSection("Other Scripts")
+Tabs.Settings:AddButton({ Title = "Simple Spy", Callback = function() task.spawn(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/SimpleSpyV3/main.lua", true))() end) end })
+Tabs.Settings:AddButton({ Title = "Dark Dex", Callback = function() task.spawn(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/Deniied0/Dex/master/source.lua", true))() end) end })
+Tabs.Settings:AddButton({ Title = "Infinite Yield", Callback = function() task.spawn(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source", true))() end) end })
+
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"MenuKeybind"})
+
+InterfaceManager:SetFolder("VOXY")
+SaveManager:SetFolder("VOXY/AnimeGhosts")
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+SaveManager:LoadAutoloadConfig()
+
+local function setupAntiAfk()
+    local Players = game:GetService("Players")
+    local VirtualUser = game:GetService("VirtualUser")
+    local CoreGui = game:GetService("CoreGui")
+    local TeleportService = game:GetService("TeleportService")
+    local GuiService = game:GetService("GuiService")
+
+    Players.LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+
+    pcall(function()
+        for _, connection in pairs(getconnections(Players.LocalPlayer.Idled)) do
+            if connection["Disable"] then
+                connection:Disable()
+            end
+        end
+    end)
+
+    local function doRejoin()
+        task.wait(2) 
+        TeleportService:Teleport(game.PlaceId, Players.LocalPlayer)
+    end
+
+    task.spawn(function()
+        pcall(function()
+            local promptOverlay = CoreGui:WaitForChild("RobloxPromptGui"):WaitForChild("promptOverlay")
+            promptOverlay.ChildAdded:Connect(function(child)
+                if child.Name == "ErrorPrompt" then
+                    doRejoin()
+                end
+            end)
+        end)
+    end)
+
+    task.spawn(function()
+        pcall(function()
+            GuiService.ErrorMessageChanged:Connect(function()
+                doRejoin()
+            end)
+        end)
+    end)
+end
+
+task.spawn(function()
+    local CoreGui = game:GetService("CoreGui")
+    local TweenService = game:GetService("TweenService")
+    local UserInputService = game:GetService("UserInputService")
+
+    if CoreGui:FindFirstChild("MobileToggleGui") then
+        CoreGui:FindFirstChild("MobileToggleGui"):Destroy()
+    end
+
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MobileToggleGui"
+    ScreenGui.Parent = CoreGui
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    onUnload(function()
+        if ScreenGui then ScreenGui:Destroy() end
+    end)
+
+    local ToggleButton = Instance.new("ImageButton")
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Parent = ScreenGui
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    ToggleButton.BackgroundTransparency = 0
+    ToggleButton.Position = UDim2.new(0.5, -25, 0, 20)
+    ToggleButton.Size = UDim2.new(0, 50, 0, 50)
+    ToggleButton.Image = "rbxassetid://86949082023913"
+    ToggleButton.ZIndex = 100
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0.5, 0)
+    UICorner.Parent = ToggleButton
+
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Color = Color3.fromRGB(255, 255, 255)
+    UIStroke.Thickness = 1.5
+    UIStroke.Transparency = 0.7
+    UIStroke.Parent = ToggleButton
+
+    local dragging = false
+    local startPos = Vector2.new()
+    local framePos = UDim2.new()
+    local hasMoved = false
+
+    local function update(input)
+        local delta = input.Position - Vector3.new(startPos.X, startPos.Y, 0)
+        ToggleButton.Position = UDim2.new(
+            framePos.X.Scale, framePos.X.Offset + delta.X, 
+            framePos.Y.Scale, framePos.Y.Offset + delta.Y
+        )
+    end
+
+    ToggleButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            hasMoved = false
+            startPos = Vector2.new(input.Position.X, input.Position.Y)
+            framePos = ToggleButton.Position
+            
+            TweenService:Create(ToggleButton, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 42, 0, 42)}):Play()
+            
+            local moveConnection
+            local releaseConnection
+
+            moveConnection = UserInputService.InputChanged:Connect(function(moveInput)
+                if (moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch) and dragging then
+                    if (Vector2.new(moveInput.Position.X, moveInput.Position.Y) - startPos).Magnitude > 10 then
+                        hasMoved = true
+                        update(moveInput)
+                    end
+                end
+            end)
+
+            releaseConnection = UserInputService.InputEnded:Connect(function(endInput)
+                if endInput.UserInputType == Enum.UserInputType.MouseButton1 or endInput.UserInputType == Enum.UserInputType.Touch then
+                    dragging = false
+                    moveConnection:Disconnect()
+                    releaseConnection:Disconnect()
+                    
+                    TweenService:Create(ToggleButton, TweenInfo.new(0.4, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(0, 50, 0, 50)}):Play()
+                    
+                    if not hasMoved then
+                        if Window then
+                            Window:Minimize()
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+end)
+
+onUnload(function() Unloaded = true end)
+setupAntiAfk()
